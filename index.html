@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ashen Hollow</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #07080f; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { background: #000; max-width: 100vw; max-height: 100vh; image-rendering: auto; cursor: crosshair; outline: none; }
+  #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: #f88;
+         font: 16px monospace; padding: 24px; text-align: center; background: #07080f; }
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="540" tabindex="0"></canvas>
+<div id="err"></div>
+<script src="assets/sprites/atlas.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/world.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
