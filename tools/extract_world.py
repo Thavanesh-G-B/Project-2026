@@ -45,6 +45,22 @@ for n, (x0, y0, x1, y1) in ITEMS.items():
     ys, xs = np.where(m)
     rgba = np.dstack([c, m * 255]).astype(np.uint8)[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
     put('i_' + n, Image.fromarray(rgba, 'RGBA'))
+# Ore / crystal overlays: only the ore pixels of the source tiles, so they can be drawn over the
+# procedural stone texture in-game (no baked-in grey tile background or frame).
+OVERLAYS = {'iron': ('ore_iron', 7), 'gold': ('ore_gold', 7), 'crystal': ('crystal', 11)}
+def overlay(name, inset):
+    x0, y0, x1, y1 = TILES[name]
+    c = np.array(im.crop((x0 + inset, y0 + inset, x1 - inset, y1 - inset))).astype(int)
+    r, g, b = c[..., 0], c[..., 1], c[..., 2]
+    lum = c.sum(2) / 3
+    if name == 'crystal': m = (b > r + 30) & (b > 110) | (lum > 175)
+    elif name == 'ore_gold': m = (r > b + 55) & (lum > 95)
+    else: m = ((r > b + 14) & (lum > 85)) | (lum > 135)
+    m = ndi.binary_closing(m, iterations=1)
+    m = ndi.binary_opening(m, iterations=1)
+    rgba = Image.fromarray(np.dstack([c, m * 255]).astype(np.uint8), 'RGBA')
+    return rgba.resize((T, T), Image.BOX)
+for k, (src, inset) in OVERLAYS.items(): put('o_' + k, overlay(src, inset))
 atlas = atlas.crop((0, 0, 512, y + rh))
 atlas.save('assets/sprites/world.png', optimize=True)
 json.dump(meta, open('assets/sprites/world.json', 'w'))

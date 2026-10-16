@@ -2,4 +2,5 @@
 import json
 chars = json.load(open('assets/sprites/chars.json'))
 world = json.load(open('assets/sprites/world.json'))
-open('assets/sprites/atlas.js', 'w').write('window.SPRITES=' + json.dumps({'chars': chars, 'world': world}, separators=(',', ':')) + ';\n')
+armor = json.load(open('assets/sprites/armor.json'))
+open('assets/sprites/atlas.js', 'w').write('window.SPRITES=' + json.dumps({'chars': chars, 'world': world, 'armorH': armor['layerH']}, separators=(',', ':')) + ';\n')

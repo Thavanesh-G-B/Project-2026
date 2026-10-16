@@ -37,7 +37,13 @@ const out = process.argv[2] || '/tmp';
   await page.mouse.down(); await page.waitForTimeout(1000); await page.mouse.up(); await page.waitForTimeout(500);
   console.log('mined tile id', t0.id, 'inventory', await page.evaluate(() => JSON.stringify({ dirt: G.player.inv_.dirt, stone: G.player.inv_.stone })));
   await page.evaluate(() => { G.player.inv_.dirt = 5; });
-  const t1 = await aim(2, -1);
+  // pick an empty tile beside the player that touches solid ground, so the check works on any world seed
+  const cand = await page.evaluate(() => { const px = Math.floor(G.player.x / T), py = Math.floor((G.player.y + 1) / T);
+    for (const [dx, dy] of [[1, -1], [-1, -1], [2, -1], [-2, -1], [1, 0], [-1, 0]]) {
+      const x = px + dx, y = py + dy;
+      if (G.world.get(x, y) === 0 && (G.world.solid(x, y + 1) || G.world.solid(x + 1, y) || G.world.solid(x - 1, y))) return [dx, dy];
+    } return null; });
+  const t1 = await aim(cand[0], cand[1]);
   await page.mouse.down({ button: 'right' }); await page.waitForTimeout(250); await page.mouse.up({ button: 'right' });
   console.log('placed: dirt left', await page.evaluate(() => G.player.inv_.dirt), '(was target air:', t1.id === 0, ')');
 

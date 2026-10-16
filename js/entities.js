@@ -118,6 +118,12 @@ const ITEM_NAME = {
   key: 'Vault Key', map: 'Treasure Map',
 };
 
+const BLOCK_ICON = { dirt: TID.DIRT, stone: TID.STONE, brick: TID.BRICK, wood: TID.PLANK };
+function drawItemIcon(ctx, item, cx, cy, size) {
+  if (BLOCK_ICON[item] !== undefined) TileArt.icon(ctx, BLOCK_ICON[item], cx, cy, size);
+  else Assets.item(ctx, ICON[item] || 'orb', cx, cy, size);
+}
+
 class Pickup {
   constructor(item, n, x, y, vx, vy) {
     this.item = item; this.n = n || 1;
@@ -142,7 +148,7 @@ class Pickup {
   }
   draw(ctx) {
     const bob = Math.sin(this.t * 4 + this.x) * 2;
-    Assets.item(ctx, ICON[this.item] || 'orb', this.x, this.y - 8 + bob, ['coin', 'dirt', 'stone', 'wood', 'brick'].includes(this.item) ? 14 : 22);
+    drawItemIcon(ctx, this.item, this.x, this.y - 8 + bob, ['coin', 'dirt', 'stone', 'wood', 'brick'].includes(this.item) ? 14 : 22);
   }
 }
 
@@ -201,12 +207,21 @@ class Projectile {
 }
 
 // ---------------------------------------------------------------- player
+const tintCanvas = document.createElement('canvas'); tintCanvas.width = 220; tintCanvas.height = 180;
+function drawTinted(ctx, g, i, x, y, scale, flip, armor, color) {
+  const t = tintCanvas.getContext('2d');
+  t.clearRect(0, 0, 220, 180); t.globalCompositeOperation = 'source-over';
+  drawPlayerSprite(t, g, i, 110, 140, scale, flip, armor);
+  t.globalCompositeOperation = 'source-atop'; t.fillStyle = color; t.fillRect(0, 0, 220, 180);
+  ctx.drawImage(tintCanvas, x - 110, y - 140);
+}
+
 const GEAR = {
   sword: [{ name: 'Rusty Sword', dmg: 10 }, { name: 'Iron Sword', dmg: 16 }, { name: 'Gold Sword', dmg: 24 }],
   pick: [{ name: 'Old Pickaxe', speed: 1 }, { name: 'Iron Pickaxe', speed: 1.9 }, { name: 'Gold Pickaxe', speed: 3 }],
-  armor: [{ name: 'Tunic', red: 0 }, { name: 'Iron Armor', red: 0.25 }, { name: 'Gold Armor', red: 0.4 }],
 };
-const SLASH_SEQ = [0, 1, 2, 4, 5, 6], SLASH_DUR = [0.06, 0.06, 0.06, 0.07, 0.07, 0.07];
+const FALL_SAFE = 680; // px/s: about 4.7 tiles of free fall; a normal jump is ~3.3 tiles
+const SLASH_SEQ = [0, 1, 2, 5, 5, 6], SLASH_DUR = [0.06, 0.06, 0.06, 0.07, 0.07, 0.07];
 const DASH_SEQ = [1, 2, 3, 4, 4, 6, 7];
 const BLOCKS = [{ item: 'dirt', tile: TID.DIRT }, { item: 'stone', tile: TID.STONE }, { item: 'brick', tile: TID.BRICK }, { item: 'wood', tile: TID.PLANK }];
 
@@ -218,11 +233,13 @@ class Player {
     this.hurtT = 0; this.inv = 0; this.dead = false; this.deathT = 0; this.sinceHurt = 99;
     this.coyote = 0; this.jumpBuf = 0; this.anim = 0; this.walkT = 0; this.mine = { x: -1, y: -1, p: 0 }; this.placeCd = 0;
     this.inv_ = { dirt: 0, stone: 0, wood: 0, iron: 0, gold: 0, crystal: 0, coin: 0, brick: 0, hpPot: 1, manaPot: 0, boots: 0, atk: 0, shield: 0, key: 0, map: 0 };
-    this.gear = { sword: 0, pick: 0, armor: 0 };
+    this.gear = { sword: 0, pick: 0 };
+    this.armor = { head: 0, chest: 0, legs: 0 };
     this.buff = { speed: 0, atk: 0, shield: 0 };
     this.block = 0;
   }
   get items() { return this.inv_; }
+  get defense() { return armorDefense(this.armor); }
   get dmg() { return GEAR.sword[this.gear.sword].dmg * (this.buff.atk > 0 ? 1.6 : 1); }
 
   collect(item, n) {
@@ -234,7 +251,7 @@ class Player {
 
   hurt(dmg, fromX) {
     if (this.dead || this.inv > 0) return false;
-    dmg *= (1 - GEAR.armor[this.gear.armor].red) * (this.buff.shield > 0 ? 0.4 : 1);
+    dmg *= (1 - armorReduction(this.armor)) * (this.buff.shield > 0 ? 0.4 : 1);
     dmg = Math.max(1, Math.round(dmg));
     this.hp -= dmg; this.inv = 0.8; this.hurtT = 0.28; this.sinceHurt = 0;
     const d = this.x >= fromX ? 1 : -1;
@@ -246,6 +263,19 @@ class Player {
     Sfx.play('hurt');
     if (this.hp <= 0) { this.hp = 0; this.dead = true; this.deathT = 0; Sfx.play('die'); this.vx = d * 160; }
     return true;
+  }
+
+  // Landing faster than FALL_SAFE hurts; armor and the shield buff do not help against the ground.
+  fallHurt(v) {
+    const dmg = Math.min(60, Math.round((v - FALL_SAFE) / 11));
+    if (dmg < 1 || this.dead) return;
+    this.hp -= dmg; this.hurtT = 0.3; this.inv = Math.max(this.inv, 0.4); this.sinceHurt = 0; this.atkT = -1; this.dashT = -1;
+    floatText(this.x, this.y - 70, '-' + dmg, '#ffa05a');
+    spawnParticles(this.x, this.y, 12, '#a89c88', 120, 0.4, 300, 3);
+    G.shake = Math.max(G.shake, 4 + dmg * 0.3);
+    Sfx.play('hurt');
+    if (!G.fallWarned) { G.fallWarned = true; G.toast('Long falls hurt. Land softly or build down.'); }
+    if (this.hp <= 0) { this.hp = 0; this.dead = true; this.deathT = 0; Sfx.play('die'); this.vx = 0; }
   }
 
   heal(n) { this.hp = Math.min(this.maxHp, this.hp + n); floatText(this.x, this.y - 70, '+' + n, '#7dff7d'); }
@@ -345,11 +375,14 @@ class Player {
         spawnParticles(this.x, this.y, 5, '#a89c88', 60, 0.3, 200, 2);
       }
       if (!k.jump && this.vy < -220) this.vy *= 0.55;
-      this.vy = Math.min(this.vy + 1500 * dt, 850);
+      this.vy = Math.min(this.vy + 1500 * dt, 1100);
     }
     const wasAir = !this.onGround, vyBefore = this.vy;
     moveBody(this, dt);
-    if (wasAir && this.onGround && vyBefore > 380) spawnParticles(this.x, this.y, 6, '#a89c88', 70, 0.3, 200, 2);
+    if (wasAir && this.onGround) {
+      if (vyBefore > 380) spawnParticles(this.x, this.y, 6, '#a89c88', 70, 0.3, 200, 2);
+      if (vyBefore > FALL_SAFE) this.fallHurt(vyBefore);
+    }
 
     // slash timeline
     if (this.atkT >= 0) {
@@ -423,8 +456,8 @@ class Player {
     if (this.inv > 0 && !this.dead && Math.floor(this.inv * 20) % 2 === 0 && this.hurtT <= 0) ctx.globalAlpha = 0.55;
     const S = 0.72;
     let g, i;
-    if (this.dead) { g = 'p_death'; i = this.deathT < 0.3 ? 0 : this.deathT < 0.6 ? 1 : this.deathT < 0.9 ? 2 : 3; }
-    else if (this.hurtT > 0) { g = 'p_death'; i = 0; }
+    if (this.dead) { g = 'p_death'; i = this.deathT < 0.35 ? 1 : this.deathT < 0.7 ? 2 : 3; }
+    else if (this.hurtT > 0) { g = 'p_slash'; i = 6; }
     else if (this.dashT >= 0) { g = 'p_dash'; i = DASH_SEQ[Math.min(DASH_SEQ.length - 1, Math.floor(this.dashT / 0.4 * DASH_SEQ.length))]; }
     else if (this.atkT >= 0) {
       let acc = 0, idx = 0; for (; idx < SLASH_DUR.length - 1; idx++) { acc += SLASH_DUR[idx]; if (this.atkT < acc) break; }
@@ -434,7 +467,8 @@ class Player {
     else { g = 'p_walk'; i = 0; }
     const breathe = this.onGround && !this.dead && g === 'p_walk' && i === 0 ? 1 + Math.sin(this.anim * 3) * 0.012 : 1;
     ctx.save(); ctx.translate(this.x, this.y); ctx.scale(1, breathe); ctx.translate(-this.x, -this.y);
-    Assets.char(ctx, g, i, this.x, this.y + 2, S, flip);
+    if (this.hurtT > 0 && !this.dead) drawTinted(ctx, g, i, this.x, this.y + 2, S, flip, this.armor, 'rgba(255,40,40,.55)');
+    else drawPlayerSprite(ctx, g, i, this.x, this.y + 2, S, flip, this.armor);
     ctx.restore();
     if (this.buff.shield > 0 && !this.dead) {
       ctx.globalAlpha = 0.25 + Math.sin(this.anim * 6) * 0.08; ctx.fillStyle = '#5ab6ff';

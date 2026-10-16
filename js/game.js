@@ -15,43 +15,54 @@ const G = {
   kills: 0, score: 0, shake: 0, winT: 0, won: false, bossAlive: null,
   input: { left: false, right: false, jump: false, jumpPressed: false, attackPressed: false, dashPressed: false, mineHeld: false, placeHeld: false },
   mouse: { x: VW / 2, y: VH / 2 }, mouseWorld: { x: 0, y: 0 }, target: null, cam: { x: 0, y: 0 },
-  toasts: [], spawnT: 4, seenT: 0, showMap: true, craftSel: 0, banner: null, time: 0,
+  toasts: [], spawnT: 4, seenT: 0, showMap: true, craftSel: 0, craftTab: 0, fallWarned: false, banner: null, time: 0,
   toast(msg) { G.toasts.push({ msg, t: 0 }); if (G.toasts.length > 4) G.toasts.shift(); },
   dmgScale() { return 1 + 0.1 * Math.max(0, G.nightNum - 1); },
   hpScale() { return 1 + 0.15 * Math.max(0, G.nightNum - 1); },
 };
 
 // ---------------------------------------------------------------- recipes
+const CATS = ['Items', 'Gear', 'Armor'];
 const RECIPES = [
-  { name: 'Health Potion', desc: 'Restores 50 HP', cost: { crystal: 2, wood: 1, coin: 5 }, give: { hpPot: 1 }, icon: 'hpPot' },
-  { name: 'Mana Potion', desc: 'Restores 70 mana', cost: { crystal: 1, stone: 2, coin: 3 }, give: { manaPot: 1 }, icon: 'manaPot' },
-  { name: 'Bricks x4', desc: 'Sturdy shelter blocks', cost: { stone: 4 }, give: { brick: 4 }, icon: 'brick' },
-  { name: 'Speed Boots', desc: '+45% speed, 25s', cost: { iron: 3, gold: 1 }, give: { boots: 1 }, icon: 'boots' },
-  { name: 'Attack Boost', desc: '+60% damage, 25s', cost: { gold: 2, crystal: 2 }, give: { atk: 1 }, icon: 'atk' },
-  { name: 'Defense Shield', desc: '-60% damage taken, 25s', cost: { iron: 2, crystal: 3 }, give: { shield: 1 }, icon: 'shield' },
-  { name: 'Iron Pickaxe', desc: 'Mine almost 2x faster', cost: { iron: 5, wood: 3 }, gear: ['pick', 1], icon: 'iron' },
-  { name: 'Gold Pickaxe', desc: 'Mine 3x faster', cost: { gold: 5, crystal: 3, wood: 3 }, gear: ['pick', 2], icon: 'gold' },
-  { name: 'Iron Sword', desc: 'Damage 10 > 16', cost: { iron: 6, wood: 3 }, gear: ['sword', 1], icon: 'atk' },
-  { name: 'Gold Sword', desc: 'Damage 16 > 24', cost: { gold: 6, crystal: 4, wood: 3 }, gear: ['sword', 2], icon: 'atk' },
-  { name: 'Iron Armor', desc: '-25% damage taken', cost: { iron: 8, wood: 2 }, gear: ['armor', 1], icon: 'shield' },
-  { name: 'Gold Armor', desc: '-40% damage taken', cost: { gold: 8, crystal: 5 }, gear: ['armor', 2], icon: 'shield' },
+  { cat: 'Items', name: 'Health Potion', desc: 'Restores 50 HP', cost: { crystal: 2, wood: 1, coin: 5 }, give: { hpPot: 1 }, icon: 'hpPot' },
+  { cat: 'Items', name: 'Mana Potion', desc: 'Restores 70 mana', cost: { crystal: 1, stone: 2, coin: 3 }, give: { manaPot: 1 }, icon: 'manaPot' },
+  { cat: 'Items', name: 'Bricks x4', desc: 'Sturdy shelter blocks', cost: { stone: 4 }, give: { brick: 4 }, icon: 'brick' },
+  { cat: 'Items', name: 'Speed Boots', desc: '+45% speed, 25s', cost: { iron: 3, gold: 1 }, give: { boots: 1 }, icon: 'boots' },
+  { cat: 'Items', name: 'Attack Boost', desc: '+60% damage, 25s', cost: { gold: 2, crystal: 2 }, give: { atk: 1 }, icon: 'atk' },
+  { cat: 'Items', name: 'Defense Shield', desc: '-60% damage taken, 25s', cost: { iron: 2, crystal: 3 }, give: { shield: 1 }, icon: 'shield' },
+  { cat: 'Gear', name: 'Iron Pickaxe', desc: 'Mine almost 2x faster', cost: { iron: 5, wood: 3 }, gear: ['pick', 1], icon: 'iron' },
+  { cat: 'Gear', name: 'Gold Pickaxe', desc: 'Mine 3x faster', cost: { gold: 5, crystal: 3, wood: 3 }, gear: ['pick', 2], icon: 'gold' },
+  { cat: 'Gear', name: 'Iron Sword', desc: 'Damage 10 > 16', cost: { iron: 6, wood: 3 }, gear: ['sword', 1], icon: 'atk' },
+  { cat: 'Gear', name: 'Gold Sword', desc: 'Damage 16 > 24', cost: { gold: 6, crystal: 4, wood: 3 }, gear: ['sword', 2], icon: 'atk' },
 ];
+// armor: every tier of every piece can be crafted directly; crafting equips it (if it is an upgrade)
+ARMOR_TIERS.forEach((t, tier) => {
+  if (!t) return;
+  ARMOR_SLOTS.forEach((slot, si) => RECIPES.push({
+    cat: 'Armor', name: `${t.name} ${ARMOR_PIECES[si]}`, desc: `+${t.def[si]} defense`, cost: t.cost[si], armor: [slot, tier], icon: t.icon,
+  }));
+});
+const recipesIn = cat => RECIPES.filter(r => r.cat === cat);
+
 function recipeState(r) {
   const p = G.player;
-  if (r.gear) {
-    const cur = p.gear[r.gear[0]];
-    if (cur >= r.gear[1]) return 'owned';
-    if (cur < r.gear[1] - 1) return 'locked';
+  if (r.gear && p.gear[r.gear[0]] >= r.gear[1]) return 'owned';
+  if (r.gear && p.gear[r.gear[0]] < r.gear[1] - 1) return 'locked';
+  if (r.armor) {
+    const cur = p.armor[r.armor[0]];
+    if (cur === r.armor[1]) return 'worn';
+    if (cur > r.armor[1]) return 'better';
   }
   return Object.keys(r.cost).every(k => p.inv_[k] >= r.cost[k]) ? 'ok' : 'short';
 }
-function craft(i) {
-  const r = RECIPES[i], p = G.player, st = recipeState(r);
+function craft(r) {
+  const p = G.player, st = recipeState(r);
   if (st !== 'ok') { Sfx.play('deny'); return; }
   for (const k in r.cost) p.inv_[k] -= r.cost[k];
   if (r.gear) p.gear[r.gear[0]] = r.gear[1];
+  else if (r.armor) { p.armor[r.armor[0]] = r.armor[1]; G.toast(`Equipped ${r.name} (defense ${p.defense})`); }
   else for (const k in r.give) p.inv_[k] += r.give[k];
-  Sfx.play('craft'); G.toast('Crafted ' + r.name);
+  Sfx.play('craft'); if (!r.armor) G.toast('Crafted ' + r.name);
 }
 
 // ---------------------------------------------------------------- game setup
@@ -213,10 +224,13 @@ window.addEventListener('keydown', e => {
   if (G.state === 'win') { if (code === 'Enter') { G.state = 'play'; G.toast('Endless mode: keep surviving!'); } return; }
   if (G.state === 'paused') { if (code === 'KeyP' || code === 'Escape') G.state = 'play'; return; }
   if (G.state === 'craft') {
+    const rows = recipesIn(CATS[G.craftTab]);
     if (code === 'KeyC' || code === 'Escape') G.state = 'play';
-    else if (code === 'ArrowDown' || code === 'KeyS') G.craftSel = (G.craftSel + 1) % RECIPES.length;
-    else if (code === 'ArrowUp' || code === 'KeyW') G.craftSel = (G.craftSel + RECIPES.length - 1) % RECIPES.length;
-    else if (code === 'Enter' || code === 'Space') craft(G.craftSel);
+    else if (code === 'ArrowDown' || code === 'KeyS') G.craftSel = (G.craftSel + 1) % rows.length;
+    else if (code === 'ArrowUp' || code === 'KeyW') G.craftSel = (G.craftSel + rows.length - 1) % rows.length;
+    else if (code === 'ArrowRight' || code === 'KeyD' || code === 'Tab') { G.craftTab = (G.craftTab + 1) % CATS.length; G.craftSel = 0; }
+    else if (code === 'ArrowLeft' || code === 'KeyA') { G.craftTab = (G.craftTab + CATS.length - 1) % CATS.length; G.craftSel = 0; }
+    else if (code === 'Enter' || code === 'Space') craft(rows[G.craftSel]);
     return;
   }
   if (G.state !== 'play') return;
@@ -259,7 +273,13 @@ canvas.addEventListener('mousedown', e => {
   if (G.state === 'dead') { newGame(); return; }
   if (G.state === 'win') { G.state = 'play'; return; }
   if (G.state === 'paused') { G.state = 'play'; return; }
-  if (G.state === 'craft') { const i = craftRowAt(G.mouse.x, G.mouse.y); if (i >= 0) { G.craftSel = i; craft(i); } return; }
+  if (G.state === 'craft') {
+    const t = craftTabAt(G.mouse.x, G.mouse.y);
+    if (t >= 0) { G.craftTab = t; G.craftSel = 0; return; }
+    const i = craftRowAt(G.mouse.x, G.mouse.y);
+    if (i >= 0) { G.craftSel = i; craft(recipesIn(CATS[G.craftTab])[i]); }
+    return;
+  }
   if (e.button === 0) G.input.mineHeld = true;
   if (e.button === 2) G.input.placeHeld = true;
 });
@@ -281,15 +301,6 @@ const lightSprite = document.createElement('canvas'); lightSprite.width = lightS
   g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,.75)'); g.addColorStop(1, 'rgba(255,255,255,0)');
   c.fillStyle = g; c.fillRect(0, 0, 256, 256);
 })();
-let wallTiles = [];
-function buildWallTiles() {
-  wallTiles = ['stone2', 'stone', 'cobble', 'cobble2'].map(n => {
-    const c = document.createElement('canvas'); c.width = c.height = T;
-    const x = c.getContext('2d'); Assets.tile(x, n, 0, 0, T);
-    x.fillStyle = 'rgba(8,8,18,.72)'; x.fillRect(0, 0, T, T);
-    return c;
-  });
-}
 const STARS = Array.from({ length: 90 }, (_, i) => ({ x: hash2(i, 1, 9) * VW, y: hash2(i, 2, 9) * VH * 0.6, s: 1 + Math.floor(hash2(i, 3, 9) * 2), ph: hash2(i, 4, 9) * 6 }));
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
 const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
@@ -336,13 +347,22 @@ function drawWorld() {
   const w = G.world, cam = G.cam;
   const x0 = Math.max(0, Math.floor(cam.x / T)), x1 = Math.min(WW - 1, Math.floor((cam.x + VW) / T));
   const y0 = Math.max(0, Math.floor(cam.y / T)), y1 = Math.min(WH - 1, Math.floor((cam.y + VH) / T));
+  const solidAt = (x, y) => TDEF[w.get(x, y)].solid;
+  // pass 1: background wall behind everything below the surface line
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      if (TDEF[w.t[y * WW + x]].solid || y <= w.surf[x]) continue;
+      const m = (solidAt(x, y - 1) ? 1 : 0) | (solidAt(x, y + 1) ? 2 : 0) | (solidAt(x - 1, y) ? 4 : 0) | (solidAt(x + 1, y) ? 8 : 0);
+      TileArt.wall(ctx, x * T, y * T, x, y, m);
+    }
+  // pass 2: blocks (solid ones get edge lighting from their exposed sides) and foliage
   for (let y = y0; y <= y1; y++)
     for (let x = x0; x <= x1; x++) {
       const id = w.t[y * WW + x], d = TDEF[id];
-      if (!d.solid && y > w.surf[x]) ctx.drawImage(wallTiles[(x * 7 + y * 13) & 3], x * T, y * T);
       if (id === TID.AIR) continue;
-      if (d.foliage) { ctx.globalAlpha = 0.97; Assets.tile(ctx, d.spr, x * T - 4, y * T - 4, T + 8); ctx.globalAlpha = 1; }
-      else Assets.tile(ctx, d.spr, x * T, y * T, T);
+      if (d.foliage) { Assets.tile(ctx, d.spr, x * T - 4, y * T - 4, T + 8); continue; }
+      const m = (solidAt(x, y - 1) ? 0 : 1) | (solidAt(x, y + 1) ? 0 : 2) | (solidAt(x - 1, y) ? 0 : 4) | (solidAt(x + 1, y) ? 0 : 8);
+      if (!TileArt.draw(ctx, id, x * T, y * T, x, y, m)) Assets.tile(ctx, d.spr, x * T, y * T, T);
     }
   // mining crack overlay
   const m = G.player.mine;
@@ -478,7 +498,7 @@ function drawHUD() {
   // vitals
   panel(8, 8, 270, 74);
   ctx.save(); ctx.beginPath(); ctx.rect(14, 14, 46, 62); ctx.clip();
-  Assets.char(ctx, 'p_walk', 0, 38, 80, 0.62, false); ctx.restore();
+  drawPlayerSprite(ctx, 'p_walk', 0, 38, 80, 0.62, false, p.armor); ctx.restore();
   bar(68, 16, 200, 16, p.hp / p.maxHp, '#c62d2d', `HP ${Math.ceil(p.hp)}/${p.maxHp}`);
   bar(68, 40, 200, 12, p.mana / p.maxMana, '#2d6fd0', `MP ${Math.floor(p.mana)}`);
   let bx = 68;
@@ -486,7 +506,7 @@ function drawHUD() {
     if (p.buff[k] > 0) { Assets.item(ctx, ic, bx + 8, 66, 16); txt(Math.ceil(p.buff[k]) + 's', bx + 20, 70, col, 11); bx += 56; }
   }
   // gear line
-  txt(`${GEAR.sword[p.gear.sword].name} (${Math.round(p.dmg)})`, 8, 100, '#d8d8e8', 11);
+  txt(`${GEAR.sword[p.gear.sword].name} (${Math.round(p.dmg)})   Defense ${p.defense}`, 8, 100, '#d8d8e8', 11);
 
   // clock
   const cw = 190, cx = VW / 2 - cw / 2;
@@ -504,7 +524,7 @@ function drawHUD() {
   panel(VW - 134, 8, 126, 136);
   res.forEach((k, i) => {
     const col = i % 2, row = Math.floor(i / 2), x = VW - 128 + col * 62, y = 14 + row * 26;
-    Assets.item(ctx, ICON[k], x + 10, y + 11, 18); txt(String(p.inv_[k]), x + 24, y + 16, p.inv_[k] ? '#fff' : '#777', 13);
+    drawItemIcon(ctx, k, x + 10, y + 11, 18); txt(String(p.inv_[k]), x + 24, y + 16, p.inv_[k] ? '#fff' : '#777', 13);
   });
   if (G.showMap) drawMinimap();
 
@@ -518,7 +538,7 @@ function drawHUD() {
     const x = hx + i * (sw + 4);
     panel(x, hy, sw, sw, 0.78);
     if (s.sel) { ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 3; ctx.strokeRect(x + 1, hy + 1, sw - 2, sw - 2); }
-    Assets.item(ctx, ICON[s.k], x + sw / 2, hy + sw / 2 - 2, 26);
+    drawItemIcon(ctx, s.k, x + sw / 2, hy + sw / 2 - 2, s.k === 'dirt' || s.k === 'stone' || s.k === 'brick' || s.k === 'wood' ? 28 : 26);
     txt(String(p.inv_[s.k]), x + sw - 4, hy + sw - 5, p.inv_[s.k] ? '#fff' : '#888', 12, 'right');
     txt(s.key, x + 4, hy + 12, '#9aa', 10);
   });
@@ -559,33 +579,62 @@ function overlay(title, sub, lines, titleCol) {
   (lines || []).forEach((l, i) => txt(l, VW / 2, VH * 0.3 + 76 + i * 22, '#e8e8f4', 14, 'center'));
 }
 
-const CRAFT = { x: 150, y: 20, w: 660, rowH: 33, top: 76 };
+const CRAFT = { x: 100, y: 24, w: 760, h: 440, tabY: 70, tabW: 104, top: 112, rowH: 36, listW: 490 };
+function craftTabAt(mx, my) {
+  for (let i = 0; i < CATS.length; i++) {
+    const x = CRAFT.x + 16 + i * (CRAFT.tabW + 8), y = CRAFT.y + CRAFT.tabY - 22;
+    if (mx >= x && mx <= x + CRAFT.tabW && my >= y && my <= y + 28) return i;
+  }
+  return -1;
+}
 function craftRowAt(mx, my) {
-  if (mx < CRAFT.x || mx > CRAFT.x + CRAFT.w) return -1;
+  if (mx < CRAFT.x + 8 || mx > CRAFT.x + CRAFT.listW) return -1;
   const i = Math.floor((my - CRAFT.top) / CRAFT.rowH);
-  return i >= 0 && i < RECIPES.length ? i : -1;
+  return i >= 0 && i < recipesIn(CATS[G.craftTab]).length ? i : -1;
 }
 function drawCraft() {
-  const p = G.player;
+  const p = G.player, rows = recipesIn(CATS[G.craftTab]);
   ctx.fillStyle = 'rgba(4,5,12,.6)'; ctx.fillRect(0, 0, VW, VH);
-  panel(CRAFT.x, CRAFT.y, CRAFT.w, 56 + RECIPES.length * CRAFT.rowH + 12, 0.95);
-  txt('Crafting', CRAFT.x + 20, CRAFT.y + 28, '#ffe08a', 20);
-  txt('Click or Up/Down + Enter to craft. C / Esc to close.', CRAFT.x + 20, CRAFT.y + 46, '#aab', 11);
+  panel(CRAFT.x, CRAFT.y, CRAFT.w, CRAFT.h, 0.96);
+  txt('Crafting', CRAFT.x + 20, CRAFT.y + 30, '#ffe08a', 20);
+  txt('Click, or arrows + Enter to craft.  Left/Right or Tab: category.  C / Esc: close', CRAFT.x + 120, CRAFT.y + 30, '#aab', 11);
+  CATS.forEach((c, i) => {
+    const x = CRAFT.x + 16 + i * (CRAFT.tabW + 8), y = CRAFT.y + CRAFT.tabY - 22, on = i === G.craftTab;
+    ctx.fillStyle = on ? 'rgba(120,140,255,.35)' : 'rgba(60,66,100,.35)'; ctx.fillRect(x, y, CRAFT.tabW, 28);
+    ctx.strokeStyle = on ? '#9db0ff' : 'rgba(120,130,180,.4)'; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, CRAFT.tabW - 2, 26);
+    txt(c, x + CRAFT.tabW / 2, y + 19, on ? '#fff' : '#aab', 13, 'center');
+  });
   const hover = craftRowAt(G.mouse.x, G.mouse.y); if (hover >= 0) G.craftSel = hover;
-  RECIPES.forEach((r, i) => {
-    const y = CRAFT.top + i * CRAFT.rowH, st = recipeState(r);
-    if (i === G.craftSel) { ctx.fillStyle = 'rgba(120,140,255,.22)'; ctx.fillRect(CRAFT.x + 8, y, CRAFT.w - 16, CRAFT.rowH - 2); }
-    ctx.globalAlpha = st === 'ok' ? 1 : 0.5;
-    Assets.item(ctx, ICON[r.icon], CRAFT.x + 30, y + 15, 22);
+  G.craftSel = Math.min(G.craftSel, rows.length - 1);
+  const NOTE = { owned: 'Owned', worn: 'Equipped', better: 'You wear better armor', locked: 'Craft the previous tier first' };
+  rows.forEach((r, i) => {
+    const y = CRAFT.top + i * CRAFT.rowH, st = recipeState(r), done = NOTE[st];
+    if (i === G.craftSel) { ctx.fillStyle = 'rgba(120,140,255,.22)'; ctx.fillRect(CRAFT.x + 8, y, CRAFT.listW - 8, CRAFT.rowH - 2); }
+    ctx.globalAlpha = st === 'ok' ? 1 : 0.55;
+    drawItemIcon(ctx, r.icon, CRAFT.x + 30, y + 16, 22);
     txt(r.name, CRAFT.x + 52, y + 15, st === 'ok' ? '#fff' : '#bbb', 13);
-    txt(st === 'owned' ? 'Owned' : st === 'locked' ? 'Craft the previous tier first' : r.desc, CRAFT.x + 52, y + 29, '#99a', 10);
-    let cx = CRAFT.x + 330;
-    if (st !== 'owned' && st !== 'locked') for (const k in r.cost) {
-      Assets.item(ctx, ICON[k], cx + 8, y + 17, 18);
+    txt(done || r.desc, CRAFT.x + 52, y + 29, done ? '#e8c860' : '#99a', 10);
+    let cx = CRAFT.x + 290;
+    if (!done) for (const k in r.cost) {
+      drawItemIcon(ctx, k, cx + 8, y + 17, 18);
       txt(`${r.cost[k]}`, cx + 20, y + 22, p.inv_[k] >= r.cost[k] ? '#9f9' : '#f88', 13); cx += 62;
     }
     ctx.globalAlpha = 1;
   });
+  // character preview with the armor set currently worn
+  const px = CRAFT.x + CRAFT.listW + 16, pw = CRAFT.w - CRAFT.listW - 32;
+  ctx.fillStyle = 'rgba(30,34,60,.8)'; ctx.fillRect(px, CRAFT.y + 56, pw, 190);
+  ctx.strokeStyle = 'rgba(120,130,180,.4)'; ctx.lineWidth = 1; ctx.strokeRect(px + 0.5, CRAFT.y + 56.5, pw - 1, 189);
+  ctx.imageSmoothingEnabled = true;
+  drawPlayerSprite(ctx, 'p_walk', 0, px + pw / 2 - 6, CRAFT.y + 232, 2.0, false, p.armor);
+  const red = Math.round(armorReduction(p.armor) * 100);
+  txt(`Defense ${p.defense}   (-${red}% damage)`, px + pw / 2, CRAFT.y + 268, '#fff', 13, 'center');
+  ARMOR_SLOTS.forEach((slot, i) => {
+    const t = ARMOR_TIERS[p.armor[slot]];
+    txt(`${ARMOR_PIECES[i]}: ${t ? t.name : 'none'}`, px + 6, CRAFT.y + 296 + i * 20, t ? '#e8c860' : '#889', 12);
+  });
+  txt(`Sword: ${GEAR.sword[p.gear.sword].name}`, px + 6, CRAFT.y + 366, '#d8d8e8', 12);
+  txt(`Pickaxe: ${GEAR.pick[p.gear.pick].name}`, px + 6, CRAFT.y + 386, '#d8d8e8', 12);
 }
 
 function drawTitle() {
@@ -594,7 +643,7 @@ function drawTitle() {
   txt('A 2D survival platformer', VW / 2, 142, '#c9c4ee', 17, 'center');
   const L = ['A / D  move       W / Space  jump', 'J  sword slash      K / Shift  dash attack (30 mana)', 'Mouse: hold left to mine, right to place a block (1-4 / wheel to pick)',
     'Q  health potion    R  mana potion    5 6 7  boots / attack / shield', 'C  crafting    F  open vault    M  map    P  pause    N  sound', '',
-    'Gather resources, build a shelter, craft gear and survive the nights.', 'Zombies, skeletons and necromancers rise at dusk and burn at dawn.', 'Two bosses stalk the dark. Destroy the Necromancer King to win.'];
+    'Gather resources, craft armor and gear, build a shelter and survive the nights. Watch your fall!', 'Zombies, skeletons and necromancers rise at dusk and burn at dawn.', 'Two bosses stalk the dark. Destroy the Necromancer King to win.'];
   L.forEach((l, i) => txt(l, VW / 2, 200 + i * 24, '#e8e8f4', 14, 'center'));
   ctx.globalAlpha = 0.6 + Math.sin(G.time * 4) * 0.4;
   txt('Press ENTER or click to begin', VW / 2, 470, '#fff', 20, 'center');
@@ -628,7 +677,7 @@ function showError(err) {
 }
 
 Assets.load().then(() => {
-  buildWallTiles();
+  TileArt.build();
   newGame(); G.state = 'title'; // world is generated behind the title screen
   requestAnimationFrame(frame);
 }).catch(showError);

@@ -6,6 +6,7 @@ Each frame: [x, y, w, h, ox, oy] where (ox, oy) is the top-left of the cropped
 frame relative to the anchor (cell centre-x, shared per-group baseline).
 """
 import json
+import cv2
 import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
@@ -27,6 +28,48 @@ def key_player(a):
     m = blue | skin | brown | steel | warm
     m = ndi.binary_opening(m, iterations=1)
     return ndi.binary_closing(m, iterations=2)
+
+PLAYER_BLANK = [(0, 0, .16, .22), (.78, 0, 1, .32)]  # label digit + wall torch in each cell
+
+def key_player_gc(a, strict=False):
+    """Player segmentation: colour classifier seeds a GrabCut. The classifier alone loses the
+    olive trousers (legs vanish in walk frames); GrabCut inside the body's convex hull keeps them."""
+    h, w = a.shape[:2]
+    seed = key_player(a)
+    for (bx0, by0, bx1, by1) in PLAYER_BLANK:
+        seed[int(by0 * h):int(by1 * h), int(bx0 * w):int(bx1 * w)] = False
+    core = clean(seed, link=8)
+    if core.sum() < 50: return core
+    pts = np.argwhere(core)[:, ::-1].astype(np.int32)
+    hull = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(hull, cv2.convexHull(pts), 1)
+    m = np.full((h, w), cv2.GC_BGD, np.uint8)
+    m[ndi.binary_dilation(hull > 0, iterations=6)] = cv2.GC_PR_BGD
+    m[hull > 0] = cv2.GC_PR_FGD
+    m[ndi.binary_erosion(core, iterations=2)] = cv2.GC_FGD
+    img = a.astype(np.uint8)[..., ::-1].copy()
+    cv2.grabCut(img, m, None, np.zeros((1, 65)), np.zeros((1, 65)), 6, cv2.GC_INIT_WITH_MASK)
+    gc = (m == cv2.GC_FGD) | (m == cv2.GC_PR_FGD)
+    # drop the teal/grey-green dungeon floor + wall that GrabCut lets through. The character's
+    # colours (brown, olive, skin, steel, blue tunic) all sit away from this hue range.
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    lum = a.mean(2)
+    bgish = (lum > 34) & (lum < 80) & (g >= r + 3) & (b >= r) & (b < r + 22)
+    ys = np.where(gc)[0]
+    low = np.arange(h)[:, None] > ys.min() + 0.62 * (ys.max() - ys.min())
+    bgish |= low & (g > r + 3) & (b < r + 20) & (lum < 135)
+    # neutral dark stone/gaps that don't touch any character-coloured pixel (outline pixels do)
+    steel = (lum > 150) & ((a.max(2) - a.min(2)) / (a.max(2) + 1) < 0.25)
+    chara = gc & ~bgish & ((r > g + 10) | (b > r + 25) | steel)
+    if strict:  # effect frames (slash arc, dash trails): wipe all grey/teal stone, keep a 1px outline
+        neutral = (lum < 85) & (np.abs(r - g) < 16) & (g - b < 18) & (b - g < 28)
+        bgish |= neutral & ~ndi.binary_dilation(chara, iterations=1)
+    else:
+        neutral = (lum < 62) & (np.abs(r - g) < 10) & (np.abs(g - b) < 12)
+        bgish |= neutral & ~ndi.binary_dilation(chara, iterations=2)
+    keep = clean(gc & ~bgish, link=2)
+    keep = ndi.binary_dilation(keep, iterations=1) & gc & ((lum < 50) | keep)  # keep the dark outline ring
+    return clean(ndi.binary_fill_holes(keep), link=1)
 
 def key_bg(colors, tol):
     def f(a):
@@ -54,7 +97,7 @@ def pitch(y0, y1, start, w, step, n):
 PX = [3, 130, 258, 386, 514, 642, 769, 897]
 def prow(y0, y1, n): return [(PX[i], y0, PX[i] + 124, y1) for i in range(n)]
 
-PLAYER = dict(sheet=1, key=key_player, blank=[(0, 0, .16, .22), (.78, 0, 1, .32)], grow=1, link=2, groups={
+PLAYER = dict(sheet=1, key=key_player_gc, grow=0, link=1, strict={('p_slash', 4), ('p_dash', 2), ('p_dash', 3), ('p_dash', 4)}, groups={
     'p_walk':  prow(26, 141, 8),
     'p_slash': prow(166, 280, 7),
     'p_dash':  prow(306, 418, 8),
@@ -100,10 +143,10 @@ def extract(cfg):
     out = {}
     for gname, cells in cfg['groups'].items():
         frames = []
-        for (x0, y0, x1, y1) in cells:
+        for ci, (x0, y0, x1, y1) in enumerate(cells):
             x0, y0, x1, y1 = x0 + 1, y0 + 1, x1 - 1, y1 - 1
             c = a[y0:y1, x0:x1]
-            k = cfg['key'](c)
+            k = cfg['key'](c, True) if (gname, ci) in cfg.get('strict', ()) else cfg['key'](c)
             for (bx0, by0, bx1, by1) in cfg.get('blank', []):  # corners with sheet labels / torches
                 h, w = k.shape
                 k[int(by0 * h):int(by1 * h), int(bx0 * w):int(bx1 * w)] = False

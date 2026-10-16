@@ -4,6 +4,7 @@
 const Assets = {
   chars: null,
   world: null,
+  armor: null,
 
   async load() {
     const img = src => new Promise((res, rej) => {
@@ -12,7 +13,7 @@ const Assets = {
       i.onerror = () => rej(new Error('Could not load ' + src));
       i.src = src;
     });
-    [this.chars, this.world] = await Promise.all([img('assets/sprites/chars.png'), img('assets/sprites/world.png')]);
+    [this.chars, this.world, this.armor] = await Promise.all([img('assets/sprites/chars.png'), img('assets/sprites/world.png'), img('assets/sprites/armor.png')]);
   },
 
   count(group) { return SPRITES.chars[group].length; },
