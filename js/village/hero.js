@@ -73,22 +73,37 @@ const Hero = {
     ctx.restore();
     return o;
   },
-  // The front, back and three-quarter walk frames in the sheet barely move the legs, so the legs are re-animated here: the
-  // picture is split at the hips, the torso bobs on every step, and each leg swings along the walking direction and lifts in
-  // its swing phase (a shear about the hip, so the leg stays attached). Side views already have a strong stride and are untouched.
+  // The front, back and three-quarter walk frames in the sheet barely move the legs, so the walk is built here from the standing picture,
+  // like a paper puppet: the torso bobs and rocks on the hips, the arms (front / back views) swing against the legs, and each leg is cut
+  // into thin slices that are shifted by increasing amounts down the leg, so it swings from the hip, bends at the knee and lifts the foot
+  // during its swing phase. Side views already have a strong stride in the sheet and are drawn as they are.
   drawLegged(ctx, img, F, s, o, d, flip) {
-    const [fx, fy, fw, fh, ax, ay] = F, amp = LEG_AMP[this.DIRS[d]], hipY = Math.round(fh * 0.62), legLen = fh - hipY, cut = Math.round(ax);
-    const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw), hy = 0.5 * Math.cos(yaw);
-    const stride = 7 * amp * s, lift = 5 * amp * s, bob = 2.2 * amp * s * Math.abs(Math.cos(ph)), sway = 0.035 * amp * Math.sin(ph) * (flip ? -1 : 1);
-    ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.rotate(sway);                              // torso: bobs and rocks on the hips
-    ctx.drawImage(img, fx, fy, fw, hipY, -ax * s, -hipY * s, fw * s, hipY * s); ctx.restore();
+    const [fx, fy, fw, fh, ax, ay] = F, dn = this.DIRS[d], amp = LEG_AMP[dn], hipY = Math.round(fh * 0.62), legLen = fh - hipY, cut = Math.round(ax);
+    const frontBack = dn === 'S' || dn === 'N', yS = Math.round(fh * 0.27), armW = Math.round(fw * 0.27);
+    const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw), hy = 0.5 * Math.cos(yaw), sgn = flip ? -1 : 1;
+    const stride = 8 * amp * s, lift = 6 * amp * s, bob = 2.4 * amp * s * Math.abs(Math.cos(ph)), sway = 0.04 * amp * Math.sin(ph) * sgn;
+    const put = (sx, sy, w, h, ox, oy) => { if (w > 0 && h > 0) ctx.drawImage(img, fx + sx, fy + sy, w, h, (sx - ax) * s + ox, (sy - ay) * s + oy, w * s, h * s); };
+    // torso, head and arms rock together about the hips
+    ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.rotate(sway); ctx.translate(0, -(hipY - ay) * s);
+    if (frontBack) {
+      put(0, 0, fw, yS, 0, 0);                                                       // head and shoulders
+      put(armW, yS - 1, fw - 2 * armW, hipY - yS + 3, 0, 0);                         // chest (2 rows lower than the hips: overlaps the legs, no seam)
+      const swL = Math.sin(ph + Math.PI), swR = Math.sin(ph);                          // each arm swings against the leg on its side
+      put(0, yS - 3, armW, hipY - yS + 3, 0, -1.8 * s * swL * amp);                    // (3 rows of shoulder overlap hide the seam)
+      put(fw - armW, yS - 3, armW, hipY - yS + 3, 0, -1.8 * s * swR * amp);
+    } else put(0, 0, fw, hipY + 2, 0, 0);
+    ctx.restore();
+    // legs: thin slices, each moved a little further than the one above it
+    const SL = 3, n = Math.ceil(legLen / SL);
     for (let side = 0; side < 2; side++) {
       const th = ph + side * Math.PI, sw = Math.sin(th), lf = Math.max(0, Math.cos(th));
-      const Sx = hx * stride * sw, Sy = hy * stride * sw - lift * lf;                                    // foot displacement on screen
-      const kx = (flip ? -Sx : Sx) / (legLen * s), ky = (bob + Sy) / (legLen * s);
-      const sx0 = side ? cut : 0, sw0 = side ? fw - cut : cut; if (sw0 <= 0) continue;
-      ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.transform(1, 0, kx, 1 + ky, 0, 0);
-      ctx.drawImage(img, fx + sx0, fy + hipY, sw0, legLen, (sx0 - ax) * s, 0, sw0 * s, legLen * s); ctx.restore();
+      const Sx = hx * stride * sw, Sy = hy * stride * sw - lift * lf, kneeBack = -hx * stride * 0.7 * lf, kneeBackY = -hy * stride * 0.7 * lf;
+      const ky = (bob + Sy) / (legLen * s), sx0 = side ? cut : 0, sw0 = side ? fw - cut : cut;
+      for (let k = 0; k < n; k++) {
+        const t = (k * SL + SL / 2) / legLen, e = t * t * (3 - 2 * t), sy = hipY + k * SL, sh = Math.min(SL, fh - sy);
+        const dx = (Sx * t + kneeBack * Math.max(0, (t - 0.3) / 0.7) ** 1.4) * sgn, dy = (hipY - ay) * s - bob + k * SL * s * (1 + ky) + kneeBackY * e;
+        if (sw0 > 0) ctx.drawImage(img, fx + sx0, fy + sy, sw0, sh, (sx0 - ax) * s + dx, dy, sw0 * s, sh * (1 + ky) * s + 0.7);
+      }
     }
   },
   drawCarry(ctx, what, s, flip, d) {

@@ -39,6 +39,7 @@ rows = np.where(thin.sum(1) > 200)[0]; cols = np.where(thin.sum(0) > 90)[0]
 lines = np.zeros_like(thin)
 for r in rows: lines[max(0, r - 1):r + 2, :] = True
 for c in cols: lines[:, max(0, c - 1):c + 2] = True
+GRIDPIX = lines & neut
 fg &= ~(lines & neut)
 fill = ndi.binary_fill_holes(fg)          # light steel blades are enclosed by their dark outline
 fg = fill & ~(lines & neut)
@@ -125,6 +126,18 @@ def cut(label_id, yr, erase=(), keep_shadowless=True, weapon=False, restore=(), 
             px = rgb[cl == k + 1]; neutral = (px.max(1) - px.min(1)).mean() < 16 and px.mean() < 185
             if not (neutral and sz < 160): keep.append(k + 1)         # weapon pieces stay, grid-line crumbs go
         mm = np.isin(cl, keep)
+    # a sheet grid line that crosses the figure leaves a transparent hairline: bridge it with the colours on either side
+    gp = GRIDPIX[y0:y1, x0:x1]; rgbf = rgb.astype(float)
+    for _ in range(2):
+        for axis in (0, 1):
+            a_, b_ = np.roll(mm, 1, axis), np.roll(mm, -1, axis)
+            bridge = gp & ~mm & a_ & b_
+            if bridge.any(): rgbf[bridge] = (np.roll(rgbf, 1, axis)[bridge] + np.roll(rgbf, -1, axis)[bridge]) / 2; mm = mm | bridge
+    rgb = rgbf.astype(rgb.dtype)
+    # small enclosed holes (the whites of the eyes, bright highlights) belong to the figure: the light-pixel clean-up removed them
+    hl, hn = ndi.label(ndi.binary_fill_holes(mm) & ~mm)
+    for k in range(1, hn + 1):
+        if (hl == k).sum() <= 70: mm = mm | (hl == k)
     ys, xs = np.where(mm)
     ty0, ty1, tx0, tx1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     rgb = rgb[ty0:ty1, tx0:tx1]; mm = mm[ty0:ty1, tx0:tx1]
