@@ -14,25 +14,18 @@ const out = process.argv[2] || '/tmp';
   await page.evaluate(() => { localStorage.clear(); newVillage(); });
   let fail = 0; const check = (name, ok, extra) => { console.log((ok ? 'ok   ' : 'FAIL ') + name + (extra ? ' ' + extra : '')); if (!ok) fail++; };
 
-  // 1. the hero looks the same from every side: same palette pixels in all 8 facings, every action draws
+  // 1. one character from every side: all eight facings and every action draw, in every outfit
   const rig = await page.evaluate(() => {
-    const c = document.createElement('canvas'); c.width = 160; c.height = 160; const g = c.getContext('2d'); const res = { tunic: [], total: [], kinds: {} };
-    for (let k = 0; k < 8; k++) {
-      g.clearRect(0, 0, 160, 160); drawRig(g, { x: 80, y: 120, s: 1.8, yaw: k * Math.PI / 4, kind: 'idle', t: 1, pal: RigPal.hero, tiers: {}, tool: 'sword' });
-      const d = g.getImageData(0, 0, 160, 160).data; let blue = 0, all = 0;
-      for (let p = 0; p < d.length; p += 4) if (d[p + 3] > 200) { all++; if (d[p + 2] > d[p] + 40 && d[p + 2] > 120) blue++; }
-      res.tunic.push(blue); res.total.push(all);
-    }
-    for (const kind of ['idle', 'walk', 'attack', 'chop', 'strike', 'hurt', 'carry', 'work']) {
-      g.clearRect(0, 0, 160, 160); drawRig(g, { x: 80, y: 120, s: 1.8, yaw: 0.7, kind, u: 0.5, ph: 1, t: 1, pal: RigPal.hero, tiers: { head: 2, chest: 2, legs: 2 }, tool: kind === 'chop' ? 'axe' : 'sword', carry: kind === 'carry' ? 'log' : null });
-      const d = g.getImageData(0, 0, 160, 160).data; let n = 0; for (let p = 3; p < d.length; p += 4) if (d[p] > 200) n++; res.kinds[kind] = n;
-    }
+    const c = document.createElement('canvas'); c.width = 160; c.height = 160; const g = c.getContext('2d'); const res = { dirs: [], kinds: {}, variants: {} };
+    const one = o => { const r = Hero.draw(g, Object.assign({ x: 80, y: 130, s: 1.6, t: 1, ph: 1 }, o)); return [r._name, Math.round(r._h || 0), r._flip]; };
+    for (let k = 0; k < 8; k++) res.dirs.push(one({ yaw: k * Math.PI / 4, kind: 'walk' }));
+    for (const kind of ['idle', 'walk', 'carry', 'attack', 'chop', 'work', 'strike', 'hurt', 'dead']) res.kinds[kind] = one({ yaw: 0.7, kind, u: 0.5, deadT: 1, carry: kind === 'carry' ? 'log' : null });
+    for (const v of ['hero', 'a1', 'a2', 'a3', 'v0', 'v1', 'v2', 'v3']) res.variants[v] = !!Hero.img[v] && !!one({ yaw: 0, kind: 'idle', variant: v })[0];
     return res;
   });
-  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
-  check('hero tunic visible from all 8 sides', rig.tunic.every(v => v > 150), JSON.stringify(rig.tunic));
-  check('hero silhouette consistent', rig.total.every(v => v > mean(rig.total) * 0.7 && v < mean(rig.total) * 1.35));
-  check('all rig actions draw', Object.values(rig.kinds).every(n => n > 800), JSON.stringify(rig.kinds));
+  check('hero drawn from all 8 sides (NW mirrors NE)', rig.dirs.every(([n, h]) => n && h > 70) && rig.dirs[5][0].startsWith('w_NE') && rig.dirs[5][2], JSON.stringify(rig.dirs.map(d => d[0])));
+  check('all actions pick a frame', Object.values(rig.kinds).every(([n, h]) => n && h > 20), JSON.stringify(Object.fromEntries(Object.entries(rig.kinds).map(([k, v]) => [k, v[0]]))));
+  check('armour and villager outfits load', Object.values(rig.variants).every(Boolean), JSON.stringify(rig.variants));
 
   // 2. chop: three axe hits, shake, fall, wood
   const chop = await page.evaluate(() => {
@@ -73,6 +66,17 @@ const out = process.argv[2] || '/tmp';
   check('HUD hero bar reflects health', /0\.2/.test(bars.hero) && bars.low, JSON.stringify(bars));
   await page.evaluate(() => { UI.cam.zoom = 1.5; centerOn(V.hero.i, V.hero.j); const e = new Enemy('knight', V.hero.i + 3, V.hero.j + 1, 1); V.enemies.push(e); e.hp = e.maxHp * 0.6; });
   await page.waitForTimeout(600); await page.screenshot({ path: `${out}/life_boss.png` });
+
+  // 6. keyboard control: D moves the hero right on screen, W up, J attacks
+  await page.evaluate(() => { for (const e of V.enemies) e.dead = true; V.enemies = []; V.raid.active = false; V.raid.queue = []; V.hero.i = MID + 0.5; V.hero.j = MID + 7.5; V.hero.dead = false; V.hero.order = null; V.hero.path = []; });
+  const kx = await page.evaluate(async () => {
+    const x0 = isoX(V.hero.i, V.hero.j), y0 = isoY(V.hero.i, V.hero.j);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' })); for (let k = 0; k < 40; k++) step(1 / 40); const x1 = isoX(V.hero.i, V.hero.j);
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' })); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' })); for (let k = 0; k < 40; k++) step(1 / 40); const y1 = isoY(V.hero.i, V.hero.j);
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' })); const still = [V.hero.i, V.hero.j]; for (let k = 0; k < 10; k++) step(1 / 40);
+    return { dx: x1 - x0, dy: y1 - y0, stopped: still[0] === V.hero.i && still[1] === V.hero.j, inTerr: Terr.has(Math.floor(V.hero.i), Math.floor(V.hero.j)) };
+  });
+  check('WASD moves the hero on screen axes and stops on release', kx.dx > 30 && kx.dy < -10 && kx.stopped && kx.inTerr, JSON.stringify(kx));
 
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();

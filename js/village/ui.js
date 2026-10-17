@@ -333,9 +333,19 @@ function wire() {
     let vol = 1 - (ox + oy) * 1.6; if (!Terr.has(wi, wj)) vol *= 0.45;
     return { pan: clamp(sx / (UI.W / 2), -1, 1) * 0.8, vol: clamp(vol, 0, 1) };
   };
+  const held = new Set();
+  const syncInput = () => { V.input.x = (held.has('KeyD') || held.has('ArrowRight') ? 1 : 0) - (held.has('KeyA') || held.has('ArrowLeft') ? 1 : 0); V.input.y = (held.has('KeyS') || held.has('ArrowDown') ? 1 : 0) - (held.has('KeyW') || held.has('ArrowUp') ? 1 : 0); };
+  window.addEventListener('keyup', e => { held.delete(e.code); syncInput(); });
+  window.addEventListener('blur', () => { held.clear(); syncInput(); });
   window.addEventListener('keydown', e => {
     Sfx.init();
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && !$('shop').classList.contains('show') && !UI.mapOpen) {
+      e.preventDefault(); held.add(e.code); syncInput();
+      if (!UI.follow) { UI.follow = true; $('bFollow').classList.add('active'); }
+      return;
+    }
+    if (e.code === 'KeyJ' && V.hero && !V.hero.dead) { const en = nearestEnemy(V.hero.i, V.hero.j, 5); if (en) orderAttack(en); else Sfx.play('slash'); return; }
     switch (e.code) {
       case 'Escape': cancelPlace(); closeShop(); closeMap(); setTool('move'); select(null); break;
       case 'Digit1': setTool('move'); break; case 'Digit2': setTool('gather'); break; case 'Digit3': openShop(); break;
@@ -372,7 +382,7 @@ function refreshInfoLive() {
 }
 function showError(err) { console.error(err); const el = $('err'); el.style.display = 'flex'; el.textContent = 'Something went wrong: ' + err.message; }
 
-Assets.load().then(() => {
+Promise.all([Assets.load(), Hero.load()]).then(() => {
   Trees.build(); Clouds.build(); wire(); resize(); Sfx.setMusic('peace');
   if (!loadGame()) newVillage();
   const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95; refreshQuickBar();

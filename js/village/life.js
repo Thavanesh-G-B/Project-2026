@@ -205,7 +205,7 @@ const Life = {
     this.spawnT = (this.spawnT || 0) - dt;
     if (V.villagers.length < want && this.spawnT <= 0 && !V.raid.active) {
       this.spawnT = 2.5;
-      V.villagers.push({ id: V.nextId++, i: door.i + rnd(-0.6, 0.6), j: door.j, path: [], act: 'idle', wait: rnd(1, 3), walkT: Math.random() * 6, fdir: { x: 0.7, y: 0.7 }, alpha: 0, hidden: false, pal: V.nextId % RigPal.villagers.length, carry: null, face: 1 });
+      V.villagers.push({ id: V.nextId++, i: door.i + rnd(-0.6, 0.6), j: door.j, path: [], act: 'idle', wait: rnd(1, 3), walkT: Math.random() * 6, fdir: { x: 0.7, y: 0.7 }, alpha: 0, hidden: false, pal: V.nextId % 4, carry: null, face: 1 });
     }
     for (const v of V.villagers) {
       v.alpha = Math.min(1, v.alpha + dt * 2.5);
@@ -252,12 +252,12 @@ const Life = {
     if (v.hidden) return;
     const x = isoX(v.i, v.j), y = isoY(v.i, v.j) + 2, moving = v.path && v.path.length > 0 && v.act !== 'work';
     const yaw = turnTo(v, yawOf(v), 10);
-    ctx.fillStyle = `rgba(14,22,12,${0.26 * v.alpha})`; ctx.beginPath(); ctx.ellipse(x + 1, y, 10, 4.6, 0, 0, 6.283); ctx.fill();
-    const o = { x, y, s: 1.05, yaw, kind: 'idle', u: 0, ph: v.walkT * 7.05, t: t + v.id, pal: RigPal.villagers[v.pal], tiers: {}, tool: 'none', carry: v.carry, alpha: v.alpha };
+    ctx.fillStyle = `rgba(14,22,12,${0.26 * v.alpha})`; ctx.beginPath(); ctx.ellipse(x + 1, y, 11, 4.8, 0, 0, 6.283); ctx.fill();
+    const o = { x, y, s: 0.86, yaw, kind: 'idle', u: 0, ph: v.walkT * 7.05, t: t + v.id, variant: 'v' + v.pal, carry: v.carry, alpha: v.alpha, side: v.face || 1 };
     if (moving) o.kind = v.carry ? 'carry' : 'walk';
-    else if (v.act === 'work') { o.kind = 'work'; }
+    else if (v.act === 'work') { o.kind = 'work'; o.u = ((t * 1.1 + v.id * 0.37) % 1); }
     else if (v.carry) o.kind = 'carry';
-    drawRig(ctx, o);
+    Hero.draw(ctx, o);
   },
 
   // ---------------------------------------------------------------- ambient layers

@@ -4,7 +4,7 @@ const SAVE_KEY = 'ashen-hollow-village-v1';
 
 const V = {
   seed: 1, res: { gold: 300, wood: 200 }, buildings: [], trees: [], occ: new Int16Array(GN * GN),
-  hero: null, guards: [], villagers: [], hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
+  hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
   heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
   cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
@@ -301,7 +301,18 @@ function updateHero(dt) {
   }
   if (h.strikeT >= 0) return;
   let moving = false;
-  if (o && o.type === 'attack') {
+  // keyboard: WASD / arrows move along the screen axes (mapped onto the isometric grid), cancelling any click order
+  const inp = V.input, kb = !!(inp && (inp.x || inp.y));
+  if (kb) {
+    h.order = null; h.path = []; h.chop = 0; h.hits = 0;
+    const di = (inp.x / 32 + inp.y / 16) / 2, dj = (inp.y / 16 - inp.x / 32) / 2, l = Math.hypot(di, dj), sp = HERO_DEF.speed * 1.08 * dt;
+    const vx = di / l * sp, vy = dj / l * sp, ok = (i, j) => Terr.has(tileOf(i), tileOf(j)) && tileCost(tileOf(i), tileOf(j), false, true) !== Infinity;
+    const nx = h.i + vx, ny = h.j + vy;
+    if (ok(nx, ny)) { h.i = nx; h.j = ny; } else if (ok(nx, h.j)) h.i = nx; else if (ok(h.i, ny)) h.j = ny;
+    h.dir = { x: di / l, y: dj / l }; faceFrom(h); h.path = []; moving = true; h.kbMove = true;
+  } else h.kbMove = false;
+  if (kb) { /* handled above */ }
+  else if (o && o.type === 'attack') {
     if (!o.e || o.e.dying) { h.order = null; }
     else {
       const d = Math.hypot(o.e.i - h.i, o.e.j - h.j);
@@ -326,7 +337,7 @@ function updateHero(dt) {
     if (e) { h.order = { type: 'attack', e, auto: true }; }
   }
   if (moving) {
-    h.walkT += dt * 1.6; faceFrom(h);
+    h.walkT += dt * 1.6; if (!kb) faceFrom(h);
     const step = Math.floor(h.walkT * 7.05 / Math.PI);                  // a footfall every half stride
     if (step !== h.lastStep) { h.lastStep = step; sfxAt('step', h.i, h.j); if (Math.random() < 0.5) V.parts.push({ x: isoX(h.i, h.j), y: isoY(h.i, h.j) + 2, vx: rnd(-8, 8), vy: -10, life: 0.5, max: 0.5, c: 'rgba(190,170,130,.55)', s: 3, g: -10 }); }
   }

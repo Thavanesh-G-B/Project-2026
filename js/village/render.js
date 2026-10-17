@@ -162,9 +162,8 @@ function nameTag(x, y, text, color) {
   ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,10,12,.85)'; ctx.strokeText(text, x, y); ctx.fillStyle = color || '#ffe9a8'; ctx.fillText(text, x, y);
 }
 
-// ---------------------------------------------------------------- people (one rig for every facing)
-const ARM_TIERS = (n) => ({ head: n, chest: n, legs: n });
-function heroArmor() { return ARM_TIERS(Math.min(3, Math.floor((V.heroLevel - 1) / 4))); }
+// ---------------------------------------------------------------- people (one pixel-art character, eight facings)
+const heroTier = () => Math.min(3, Math.floor((V.heroLevel - 1) / 4));
 // facing on screen: 0 = towards the camera, PI/2 = screen-right, PI = away, -PI/2 = screen-left
 function yawOf(u) { const f = u.fdir || { x: 0.7, y: 0.7 }; return Math.atan2(f.x - f.y, f.x + f.y); }
 function turnTo(u, target, rate) {
@@ -172,44 +171,51 @@ function turnTo(u, target, rate) {
   let d = target - u.yawS; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832;
   u.yawS += d * Math.min(1, UI.dt * rate); return u.yawS;
 }
+// the bright crescent a sword leaves: an arc in front of the fighter, sweeping across during the slash
+function swordArc(x, y, side, u) {
+  const k = clamp((u - 0.3) / 0.38, 0, 1); if (k <= 0 || u > 0.85) return;
+  const a0 = side > 0 ? -2.3 : -0.84, dir = side > 0 ? 1 : -1, cy = y - 28, R = 30;
+  ctx.save(); ctx.lineCap = 'round';
+  for (let n = 0; n < 9; n++) {
+    const t1 = k - n * 0.07, t0 = k - (n + 1) * 0.07; if (t0 < 0) break;
+    ctx.strokeStyle = `rgba(255,248,222,${0.8 * (1 - n / 9) * (1 - clamp((u - 0.68) / 0.17, 0, 1))})`; ctx.lineWidth = 7 - n * 0.6;
+    ctx.beginPath(); ctx.ellipse(x + side * 4, cy, R, R * 0.8, 0, a0 + dir * 1.9 * Math.max(0, t0), a0 + dir * 1.9 * t1, dir < 0); ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawHero(h, t) {
-  const x = isoX(h.i, h.j), y = isoY(h.i, h.j) + 2;
-  const moving = h.path && h.path.length > 0, yaw = turnTo(h, yawOf(h), 14);
+  const x = isoX(h.i, h.j), y = isoY(h.i, h.j) + 2, S = 1.0;
+  const moving = (h.path && h.path.length > 0) || h.kbMove, yaw = turnTo(h, yawOf(h), 14);
   const dim = h.inv > 0 && h.hurt <= 0 && Math.floor(h.inv * 20) % 2 === 0 ? 0.6 : 1;
+  const tier = heroTier(), variant = tier ? 'a' + tier : 'hero';
+  const o = { x, y, s: S, yaw, kind: 'idle', u: 0, ph: 0, t, variant, alpha: dim, side: h.face || 1 };
   if (h.dead) {
-    shadowAt(x, y, 14, 6, 0.28);
-    ctx.save(); ctx.translate(x, y - 2); ctx.rotate(-1.35 * (h.face || 1)); ctx.translate(-x, -y + 2);
-    drawRig(ctx, { x, y, s: 1.4, yaw, kind: 'hurt', u: 0, ph: 0, t, pal: RigPal.hero, tiers: heroArmor(), tool: 'none', alpha: 0.9 }); ctx.restore();
-    return;
+    shadowAt(x, y, 17, 6, 0.28);
+    o.kind = 'dead'; o.deadT = Math.max(0, 12 - h.respawn); o.alpha = 0.95; Hero.draw(ctx, o); return;
   }
-  shadowAt(x, y, 14, 6.5, 0.3);
-  const o = { x, y, s: 1.4, yaw, kind: 'idle', u: 0, ph: 0, t, pal: RigPal.hero, tiers: heroArmor(), tool: 'sword', alpha: dim };
-  if (h.hurt > 0) { o.kind = 'hurt'; }
+  shadowAt(x, y, 15, 6.5, 0.3);
+  if (h.hurt > 0) { o.kind = 'hurt'; o.flash = 'rgba(255,50,40,.45)'; }
   else if (h.strikeT >= 0) { o.kind = 'strike'; o.u = h.strikeT / 0.4; }
-  else if (h.atk >= 0) { o.kind = 'attack'; o.u = h.atk / 0.39; }
-  else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; o.tool = 'axe'; }
+  else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
+  else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
   else if (moving) { o.kind = 'walk'; o.ph = h.walkT * 7.05; }
-  drawRig(ctx, o);
-  // slash trail: a bright ribbon following the blade through the arc
-  if (o.kind === 'attack' && o.u > 0.3 && o.u < 0.85) {
-    const pts = []; for (let k = 0; k <= 7; k++) { const r = rigTipAt(o, 'attack', Math.max(0.3, o.u - 0.04 * (7 - k))); if (r.tip) pts.push(r.tip); }
-    ctx.save(); ctx.lineCap = 'round';
-    for (let k = 1; k < pts.length; k++) { const a = k / pts.length; ctx.strokeStyle = `rgba(255,248,220,${0.75 * a})`; ctx.lineWidth = 1 + a * 6; ctx.beginPath(); ctx.moveTo(pts[k - 1].x, pts[k - 1].y); ctx.lineTo(pts[k].x, pts[k].y); ctx.stroke(); }
-    ctx.restore();
-  }
-  if (o.kind === 'strike') { ctx.save(); ctx.strokeStyle = `rgba(190,235,255,${0.7 * (1 - o.u)})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y - 14, 30 + o.u * 36, 14 + o.u * 16, 0, 0, 6.283); ctx.stroke(); ctx.restore(); }
-  drawBar(x, y - 66, 36, h.hp / h.maxHp, { ent: h, h: 6, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
-  nameTag(x, y - 72, 'Lv ' + V.heroLevel);
+  Hero.draw(ctx, o);
+  if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
+  if (o.kind === 'strike') { ctx.save(); ctx.strokeStyle = `rgba(190,235,255,${0.7 * (1 - o.u)})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y - 12, 30 + o.u * 36, 14 + o.u * 16, 0, 0, 6.283); ctx.stroke(); ctx.restore(); }
+  drawBar(x, y - 74, 36, h.hp / h.maxHp, { ent: h, h: 6, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
+  nameTag(x, y - 80, 'Lv ' + V.heroLevel);
 }
 function drawGuard(gd, t) {
   const x = isoX(gd.i, gd.j), y = isoY(gd.i, gd.j) + 2;
-  shadowAt(x, y, 12, 5.5, 0.28);
+  shadowAt(x, y, 14, 5.5, 0.28);
   const yaw = turnTo(gd, yawOf(gd), 12), walking = gd.path && gd.path.length > 0 && gd.atk < 0;
-  const o = { x, y, s: 1.2, yaw, kind: 'idle', u: 0, ph: 0, t: t + gd.id, pal: RigPal.hero, tiers: ARM_TIERS(gd.level), tool: 'sword' };
-  if (gd.atk >= 0) { o.kind = 'attack'; o.u = clamp(gd.atk / 0.39, 0, 1); }
+  const o = { x, y, s: 0.94, yaw, kind: 'idle', u: 0, ph: 0, t: t + gd.id, variant: 'a' + clamp(gd.level, 1, 3), side: gd.face || 1 };
+  if (gd.atk >= 0) { o.kind = 'attack'; o.u = clamp(gd.atk / 0.45, 0, 1); }
   else if (walking) { o.kind = 'walk'; o.ph = gd.walkT * 7.05; }
-  drawRig(ctx, o);
-  if (gd.hp < gd.maxHp) drawBar(x, y - 56, 26, gd.hp / gd.maxHp, { ent: gd, h: 5, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
+  if (gd.hurt > 0) o.flash = 'rgba(255,50,40,.4)';
+  Hero.draw(ctx, o);
+  if (o.kind === 'attack') swordArc(x, y, o.side, o.u);
+  if (gd.hp < gd.maxHp) drawBar(x, y - 70, 28, gd.hp / gd.maxHp, { ent: gd, h: 5, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
 }
 function enemyFrame(e) {
   const g = e.d.g, t = e.walkT;
