@@ -248,7 +248,7 @@ window.addEventListener('keydown', e => {
     case 'KeyF': case 'KeyE': tryInteract(); break;
     case 'KeyC': G.state = 'craft'; break;
     case 'KeyM': G.showMap = !G.showMap; break;
-    case 'KeyN': Sfx.muted = !Sfx.muted; G.toast(Sfx.muted ? 'Sound off' : 'Sound on'); break;
+    case 'KeyN': Sfx.setMuted(!Sfx.muted); G.toast(Sfx.muted ? 'Sound off' : 'Sound on'); break;
     case 'KeyP': case 'Escape': G.state = 'paused'; break;
   }
 });
