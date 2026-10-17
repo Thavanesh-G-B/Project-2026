@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ashen Hollow: Village</title>
+<style>
+  :root {
+    --bg: #0f1d23; --panel: #16292f; --panel2: #1b333a; --line: #34525a; --ink: #dfe9e3; --mute: #9db2ab;
+    --gold: #e2bd6a; --gold-d: #b48f46; --danger: #e0705a; --ok: #8ccf7a;
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .top { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--line); background: #122329; }
+  .brand { font-family: var(--serif); font-size: 22px; letter-spacing: .3px; }
+  .brand small { display: block; font: 10px var(--mono); letter-spacing: 2px; color: var(--mute); text-transform: uppercase; margin-top: -2px; }
+  .spacer { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: #19302f; font: 12px var(--mono); white-space: nowrap; }
+  .pill b { color: var(--gold); font-weight: 600; }
+  .lnk, .tiny { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: 12px var(--mono); color: var(--ink); text-decoration: none; }
+  .lnk:hover, .tiny:hover { border-color: var(--gold-d); }
+  main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px 20px 10px; gap: 8px; }
+  .card { flex: 1; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+  .card-head { display: flex; align-items: center; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  .card-head h1 { margin: 0; font: 600 13px var(--mono); letter-spacing: 3px; text-transform: uppercase; }
+  .card-head .sub { font: 11px var(--mono); letter-spacing: .5px; color: var(--mute); text-transform: uppercase; }
+  .res { display: flex; gap: 14px; font: 13px var(--mono); }
+  .res span b { color: var(--gold); font-weight: 600; }
+  .stage { position: relative; flex: 1; min-height: 240px; background: #26363d; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .chip { position: absolute; background: rgba(20,38,45,.92); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; pointer-events: none; }
+  .chip.danger { background: rgba(86,30,24,.94); border-color: #a4503f; color: #ffd8cf; }
+  #chipState { left: 14px; top: 14px; } #chipHp { right: 14px; top: 14px; }
+  #mapInfo { left: 14px; bottom: 14px; font: 12px var(--mono); color: var(--mute); }
+  .zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
+  .zoom button, .toolbar button, .btn { background: #1d363c; border: 1px solid var(--line); border-radius: 8px; padding: 7px 13px; font-size: 13px; }
+  .zoom button:hover, .toolbar button:hover:not(:disabled), .btn:hover { border-color: var(--gold); }
+  .zoom button.active, .toolbar button.active { background: #c7a65f; color: #1d1a10; border-color: #e6c677; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--line); background: #172b31; }
+  .toolbar button { padding: 9px 16px; position: relative; overflow: hidden; }
+  .toolbar button.pri { background: #c7a65f; color: #1d1a10; border-color: #e6c677; font-weight: 600; }
+  .toolbar button:disabled { opacity: .5; cursor: default; }
+  #tStrike::after { content: ""; position: absolute; left: 0; bottom: 0; height: 100%; width: var(--cd, 0%); background: rgba(0,0,0,.35); }
+  .toolbar button span { position: relative; z-index: 1; }
+  .info { padding: 12px 18px; border-top: 1px solid var(--line); height: 132px; overflow: auto; background: var(--panel); color: #d4e0da; }
+  .info p { margin: 0 0 6px; } .info .stats { color: var(--mute); font: 12px var(--mono); }
+  .selhead { font-size: 15px; margin-bottom: 4px; } .selhead .lv { font: 11px var(--mono); color: var(--gold); margin-left: 8px; letter-spacing: 1px; text-transform: uppercase; }
+  .acts { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; } .costs { display: inline-flex; gap: 8px; align-items: center; }
+  .btn.gold { background: #c7a65f; color: #1d1a10; border-color: #e6c677; font-weight: 600; }
+  .cost { font: 12px var(--mono); padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: #17302f; color: var(--ok); } .cost.short { color: var(--danger); border-color: #7a3f34; }
+  .foot { display: flex; align-items: center; gap: 14px; font: 11px var(--mono); color: var(--mute); padding: 0 4px; }
+  .xp { width: 140px; height: 6px; border-radius: 4px; background: #0c171b; border: 1px solid var(--line); overflow: hidden; } .xp i { display: block; height: 100%; background: var(--gold); }
+  .modal { position: fixed; inset: 0; background: rgba(6,12,15,.72); display: none; align-items: center; justify-content: center; z-index: 10; padding: 20px; }
+  .modal.show { display: flex; }
+  .sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: 900px; width: 100%; max-height: 92vh; overflow: auto; padding: 18px 20px; }
+  .sheet h2 { margin: 0; font: 600 13px var(--mono); letter-spacing: 3px; text-transform: uppercase; }
+  .sheet .hd { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; } .sheet .hd .sub { font: 12px var(--mono); color: var(--mute); flex: 1; }
+  #shopGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .card-b { display: flex; gap: 10px; text-align: left; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .card-b:hover { border-color: var(--gold); } .card-b.full { opacity: .45; } .card-b.poor .row .cost { opacity: .9; }
+  .card-b canvas { width: 84px; height: 84px; flex: none; background: #23412f; border-radius: 8px; }
+  .cb { display: flex; flex-direction: column; gap: 4px; min-width: 0; } .cb small { color: var(--mute); font-size: 11.5px; line-height: 1.3; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; } .row.meta { justify-content: space-between; font: 11px var(--mono); color: var(--mute); }
+  #mapCanvas { width: 100%; max-width: 760px; height: auto; border-radius: 10px; border: 1px solid var(--line); cursor: crosshair; }
+  #toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); background: rgba(14,28,33,.96); border: 1px solid var(--gold-d); color: #f3ead0; padding: 10px 18px; border-radius: 10px; opacity: 0; transition: .25s; pointer-events: none; z-index: 20; max-width: 90vw; text-align: center; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #lost .sheet { text-align: center; max-width: 520px; } #lost h2 { font: 700 30px var(--serif); letter-spacing: 0; text-transform: none; color: #f0b8a8; margin-bottom: 8px; }
+  #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: var(--bg); color: #f88; font: 15px var(--mono); padding: 24px; text-align: center; z-index: 50; }
+  @media (max-width: 760px) { .top { flex-wrap: wrap; padding: 8px 12px; } main { padding: 8px; } .info { height: 120px; } .res { display: none; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Ashen Hollow<small>Village · single player</small></div>
+  <div class="spacer"></div>
+  <span class="pill">◉ <b id="rGold">0</b> gold</span>
+  <span class="pill">⌾ <b id="rWood">0</b> wood</span>
+  <span class="pill">Builders <b id="rBuild">0/0</b></span>
+  <a class="lnk" href="index.html">Platformer mode</a>
+</header>
+<main>
+  <section class="card">
+    <div class="card-head">
+      <div><h1>Hearthguard</h1><div class="sub">Your village · raids escalate · two bosses</div></div>
+      <div class="spacer"></div>
+      <button class="tiny" id="bSound">Sound on</button>
+      <button class="tiny" id="bNew">New village</button>
+      <button class="tiny" id="bPause">Pause</button>
+    </div>
+    <div class="stage">
+      <canvas id="v"></canvas>
+      <div class="chip" id="chipState">Peaceful preparation</div>
+      <div class="chip" id="chipHp">Hall 0 · Hero 0</div>
+      <div class="chip" id="mapInfo"></div>
+      <div class="zoom">
+        <button id="bMinus" title="Zoom out">−</button><button id="bVillage">Village</button><button id="bFollow">Follow hero</button><button id="bMap">World map</button><button id="bPlus" title="Zoom in">+</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="tMove" class="active"><span>↗ Move / inspect</span></button>
+      <button id="tGather"><span>⌾ Gather tree</span></button>
+      <button id="tShop" class="pri"><span>◉ Village shop</span></button>
+      <button id="tStrike"><span>Hero strike</span></button>
+      <button id="tRaid" class="pri">Start raid 1</button>
+    </div>
+    <div class="info" id="info"></div>
+  </section>
+  <div class="foot"><span id="pLevel"></span><div class="xp"><i id="pXp"></i></div><span class="spacer"></span><span>Left-click: inspect / collect. Right-click: command your hero. Space: hero strike. Drag to pan, wheel to zoom.</span></div>
+</main>
+
+<div class="modal" id="shop"><div class="sheet">
+  <div class="hd"><h2>Village shop</h2><span class="sub" id="shopRes"></span><button class="tiny" id="shopClose">Close</button></div>
+  <div id="shopGrid"></div>
+</div></div>
+<div class="modal" id="worldmap"><div class="sheet">
+  <div class="hd"><h2>World map</h2><span class="sub">Click to jump the camera</span><button class="tiny" id="mapClose">Close</button></div>
+  <canvas id="mapCanvas" width="760" height="420"></canvas>
+</div></div>
+<div class="modal" id="lost"><div class="sheet">
+  <h2>The village has fallen</h2>
+  <p id="lostStats" style="color:var(--mute)"></p>
+  <button class="btn gold" id="lostNew">Found a new village</button>
+</div></div>
+<div id="toast"></div>
+<div id="err"></div>
+
+<script src="assets/sprites/atlas.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/armor.js"></script>
+<script src="js/village/core.js"></script>
+<script src="js/village/data.js"></script>
+<script src="js/village/art.js"></script>
+<script src="js/village/sim.js"></script>
+<script src="js/village/render.js"></script>
+<script src="js/village/ui.js"></script>
+</body>
+</html>

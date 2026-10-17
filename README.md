@@ -1,5 +1,24 @@
 # Ashen Hollow
 
+Two games share this project: a side-scrolling **survival platformer** (`index.html`) and a Clash of Clans-style **village builder and defender** (`village.html`). Each links to the other.
+
+## Village mode (`village.html`)
+
+An isometric island village in the spirit of Clash of Clans. Gather resources, build and upgrade, then defend against escalating undead raids with your hero, towers, walls, traps and trained guards.
+
+- **Collectors**: Gold Mines and Lumber Camps fill up over time (even while you are away, up to 30 minutes at half rate). Tap the floating coin or log bubble to collect before they are full.
+- **Build**: open the *Village shop* (`3`), pick a building and click an empty tile. Builders (Town Hall level + 1) work in parallel on construction and upgrades; walls can be dragged out in a line. Everything is capped by the Town Hall level, and storage is limited until you build Storage Vaults.
+- **Defenses**: Archer Towers (hit ground and air), Cannons (splash, ground only), Walls (enemies must break through or walk around), Spike Traps, and Barracks that train guards wearing Iron / Gold / Crystal armor by level.
+- **Raids**: *Start raid N* sends zombies, skeletons, necromancers and necro-spawn from the island lanes. Skeletons and the Cursed Knight (raid 5, 15, ...) hunt your defenses, the flying Necromancer King (raid 10, 20, ...) goes for the Town Hall. Lose the Town Hall and the village falls; other destroyed buildings become ruins you can rebuild at half price.
+- **Hero**: left-click inspects and collects, right-click commands (move, attack an enemy, chop a tree). `Space` is *Hero strike*, a shockwave on an 8 s cooldown. The idle hero hunts enemies on its own during raids. It levels up with kills and respawns at the Town Hall if it falls.
+- Camera: drag to pan, wheel to zoom, *Follow hero*, *Village* (recentre), *World map* (jump anywhere). Progress is saved in the browser automatically.
+
+Keys: `1` move/inspect, `2` gather tree, `3` shop, `R` start raid, `Space` strike, `F` follow, `M` map, `P` pause, `Esc` cancel.
+
+---
+
+## Platformer mode (`index.html`)
+
 A 2D side-scrolling survival platformer that runs in the browser (HTML5 canvas, no build step, no dependencies).
 All character, enemy, boss, terrain and item art is sliced from the four reference sprite sheets in `assets/source/`.
 
@@ -48,6 +67,9 @@ Surface undead burn in sunlight at dawn, so a shelter of blocks will get you thr
 ```
 index.html            page shell
 js/assets.js          sprite atlas access
+js/sfx.js             shared audio
+js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), sim, render, ui
+village.html          village mode page
 js/world.js           tiles + world generation
 js/tiles.js           block textures and edge lighting
 js/armor.js           armor tiers, defense, layered sprite drawing
@@ -70,4 +92,6 @@ NODE_PATH=$(npm root -g) node tools/smoke_test.js <screenshot-dir>     # load, m
 NODE_PATH=$(npm root -g) node tools/scenario_test.js <screenshot-dir>  # night, bosses, mining, crafting, caves
 NODE_PATH=$(npm root -g) node tools/feature_test.js <screenshot-dir>   # walk cycle, armor crafting/visuals, fall damage
 NODE_PATH=$(npm root -g) node tools/soak_test.js <screenshot-dir>      # 14 simulated minutes, death/victory/vault flows
+NODE_PATH=$(npm root -g) node tools/village_test.js <screenshot-dir>   # village: shop, placing, build, collect, upgrade, raid, save/load
+NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot plays 12 raids including both bosses
 ```
