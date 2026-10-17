@@ -137,6 +137,22 @@ const out = process.argv[2] || '/tmp';
   });
   check('stride phase tracks distance walked (no foot skating)', gait.dist > 60 && Math.abs(gait.cycles - gait.expected) < 0.35, JSON.stringify(gait));
 
+  // 11. chopping: the hero walks to a spot beside the tree and the axe swings towards it, whichever side he starts from
+  const chopSides = await page.evaluate(async () => {
+    V.selHero = false; V.selected = null; for (const e of V.enemies) e.dead = true; V.enemies = []; V.hero.dead = false; UI.follow = true; UI.cam.zoom = 1.5; V.paused = false;
+    const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], free = t => N8.filter(([a, b]) => occAt(t.i + a, t.j + b) === 0 && Terr.has(t.i + a, t.j + b)).length;
+    const t = V.trees.filter(t => t.alive && !t.felled && Math.abs(t.i - MID) < 11 && Math.abs(t.j - MID) < 11 && Terr.has(t.i, t.j)).sort((a, b) => free(b) - free(a))[0], res = [];
+    for (const [a, b] of N8.filter(([a, b]) => occAt(t.i + a, t.j + b) === 0 && Terr.has(t.i + a, t.j + b))) {
+      t.hits = 0; t.felled = false; t.alive = true; t.fall = null; V.occ[t.j * GN + t.i] = -1;
+      const h = V.hero; h.i = t.i + 0.5 + a; h.j = t.j + 0.5 + b; h.path = []; h.order = null; h.chopping = false; orderChop(t);
+      let rec = null;
+      for (let k = 0; k < 40 * 5 && !rec; k++) { step(1 / 40); if (h.chopping && h.chop > 0.7) { await new Promise(r => setTimeout(r, 80)); const dx = isoX(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj) - isoX(h.i, h.j), dy = isoY(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj) - isoY(h.i, h.j); rec = { treeRight: dx > 0, level: Math.abs(dy) < 20, flipped: !!h._flip, frame: h._frame }; } }
+      res.push(rec); h.order = null; h.chopping = false;
+    }
+    return res;
+  });
+  check('chop: hero stands beside the tree, level with it, axe towards it', chopSides.length >= 3 && chopSides.every(r => r && r.level && r.flipped === !r.treeRight), JSON.stringify(chopSides));
+
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();
   process.exit(errors.length || fail ? 1 : 0);

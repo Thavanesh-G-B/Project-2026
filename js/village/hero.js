@@ -3,6 +3,8 @@
 // cut from the reference sheet by tools/extract_hero.py). Eight walk directions come straight from the sheet;
 // the sword, axe and death poses face south-east and are mirrored for the other side.
 // Variants: 'hero', armour tiers 'a1'..'a3', and four villager outfits 'v0'..'v3'.
+// how much each facing's legs are re-animated (profile views already have a good stride in the sheet)
+const LEG_AMP = { S: 1, N: 1, SE: 0.75, SW: 0.75, NE: 0.75, NW: 0.75, E: 0.25, W: 0.25 };
 const Hero = {
   img: {}, ready: false, DIRS: ['S', 'SE', 'E', 'NE', 'N', 'NW', 'W', 'SW'], tmp: null,
   load() {
@@ -54,12 +56,30 @@ const Hero = {
       const t = this.tmp, g = t.getContext('2d'); g.clearRect(0, 0, 160, 160); g.globalCompositeOperation = 'source-over';
       g.drawImage(img, fx, fy, fw, fh, 80 - ax, 150 - ay, fw, fh); g.globalCompositeOperation = 'source-atop'; g.fillStyle = o.flash; g.fillRect(0, 0, 160, 160);
       ctx.drawImage(t, 0, 0, 160, 160, -80 * s, -150 * s, 160 * s, 160 * s);
-    } else ctx.drawImage(img, fx, fy, fw, fh, -ax * s, -ay * s, fw * s, fh * s);
+    } else if ((kind === 'walk' || kind === 'carry') && LEG_AMP[this.DIRS[d]]) this.drawLegged(ctx, img, F, s, o, d, flip);
+    else ctx.drawImage(img, fx, fy, fw, fh, -ax * s, -ay * s, fw * s, fh * s);
     // a carried load, held in front of the belly
     if (o.carry && (kind === 'carry' || kind === 'idle' || kind === 'walk')) this.drawCarry(ctx, o.carry, s, flip, d);
     o._h = fh * s; o._flip = flip; o._name = name;
     ctx.restore();
     return o;
+  },
+  // The front, back and three-quarter walk frames in the sheet barely move the legs, so the legs are re-animated here: the
+  // picture is split at the hips, the torso bobs on every step, and each leg swings along the walking direction and lifts in
+  // its swing phase (a shear about the hip, so the leg stays attached). Side views already have a strong stride and are untouched.
+  drawLegged(ctx, img, F, s, o, d, flip) {
+    const [fx, fy, fw, fh, ax, ay] = F, amp = LEG_AMP[this.DIRS[d]], hipY = Math.round(fh * 0.62), legLen = fh - hipY, cut = Math.round(ax);
+    const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw), hy = 0.5 * Math.cos(yaw);
+    const stride = 5.2 * amp * s, lift = 3.6 * amp * s, bob = 2.0 * amp * s * Math.abs(Math.cos(ph));
+    ctx.drawImage(img, fx, fy, fw, hipY, -ax * s, -ay * s - bob, fw * s, hipY * s);                       // torso
+    for (let side = 0; side < 2; side++) {
+      const th = ph + side * Math.PI, sw = Math.sin(th), lf = Math.max(0, Math.cos(th));
+      const Sx = hx * stride * sw, Sy = hy * stride * sw - lift * lf;                                    // foot displacement on screen
+      const kx = (flip ? -Sx : Sx) / (legLen * s), ky = (bob + Sy) / (legLen * s);
+      const sx0 = side ? cut : 0, sw0 = side ? fw - cut : cut; if (sw0 <= 0) continue;
+      ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.transform(1, 0, kx, 1 + ky, 0, 0);
+      ctx.drawImage(img, fx + sx0, fy + hipY, sw0, legLen, (sx0 - ax) * s, 0, sw0 * s, legLen * s); ctx.restore();
+    }
   },
   drawCarry(ctx, what, s, flip, d) {
     const behind = d >= 3 && d <= 5;                            // facing away: the load hides behind the body

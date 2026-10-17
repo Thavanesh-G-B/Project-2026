@@ -202,9 +202,20 @@ function pathToTile(u, gi, gj) {                 // hero / guards stay inside th
   return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false, 3500, true)
     || (tileCost(gi, gj, false, true) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true) : null);
 }
+// The chopping pictures face the camera (down-left or down-right), so the hero must stand where the tree is beside or below him
+// on screen. Preferred spots: level with the tree on its left / right, then the two upper sides; any neighbour is the last resort.
+const CHOP_TIERS = [[[1, -1], [-1, 1]], [[0, -1], [-1, 0]], [[1, 0], [0, 1], [-1, -1], [1, 1]]];
 function pathToTree(u, t) {
+  const si = tileOf(u.i), sj = tileOf(u.j);
+  for (const tier of CHOP_TIERS) {
+    const spots = tier.map(([a, b]) => [t.i + a, t.j + b]).filter(([i, j]) => inGrid(i, j) && tileCost(i, j, false, true) !== Infinity);
+    if (spots.some(([i, j]) => i === si && j === sj)) return [];                       // already standing on a good spot
+    let best = null;
+    for (const [gi, gj] of spots) { const p = findPath(si, sj, (i, j) => i === gi && j === gj, (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)), false, 3500, true); if (p && (!best || p.length < best.length)) best = p; }
+    if (best) return best;
+  }
   const hf = (i, j) => Math.max(Math.abs(i - t.i), Math.abs(j - t.j));
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
+  return findPath(si, sj, (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
 }
 // move a unit along its path; returns true while still travelling
 function followPath(u, dt, speed) {
@@ -352,7 +363,7 @@ function updateHero(dt) {
     if (!t.alive || t.felled) { h.order = null; h.chop = 0; }
     else if (Math.abs(tileOf(h.i) - t.i) <= 1 && Math.abs(tileOf(h.j) - t.j) <= 1 && !h.path.length) {
       // three axe swings (0.9 s each, impact at 62% of the swing), then the tree comes down
-      lookAt(h, t.i + 0.5, t.j + 0.5); h.chopping = true; h.chop += dt;
+      lookAt(h, t.i + 0.5 + (t.ox || 0), t.j + 0.5 + (t.oj || 0)); h.chopping = true; h.chop += dt;
       const due = h.chop >= 0.558 ? Math.floor((h.chop - 0.558) / 0.9) + 1 : 0;
       while (h.hits < due && h.order === o) { h.hits++; chopHit(h, t); }
     } else moving = followPath(h, dt, HERO_DEF.speed);

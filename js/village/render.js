@@ -232,7 +232,7 @@ function drawHero(h, t) {
   else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
   else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
   else if (moving) { o.kind = 'walk'; o.ph = sph; }
-  Hero.draw(ctx, o);
+  Hero.draw(ctx, o); h._flip = o._flip; h._frame = o._name;
   if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
   if (o.kind === 'strike') {                                 // charge: light gathers on the raised blade; slam: ground flash
     const side = Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1);
