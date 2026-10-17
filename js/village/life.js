@@ -275,7 +275,7 @@ const Life = {
     const x = isoX(v.i, v.j), y = isoY(v.i, v.j) + 2, moving = v.path && v.path.length > 0 && v.act !== 'work';
     const yaw = turnTo(v, yawOf(v), 10);
     ctx.fillStyle = `rgba(14,22,12,${0.26 * v.alpha})`; ctx.beginPath(); ctx.ellipse(x + 1, y, 11, 4.8, 0, 0, 6.283); ctx.fill();
-    const o = { x, y, s: 0.86, yaw, kind: 'idle', u: 0, ph: v.walkT * 7.05, t: t + v.id, variant: 'v' + v.pal, carry: v.carry, alpha: v.alpha, side: v.face || 1 };
+    const o = { x, y, s: 0.86, yaw, kind: 'idle', u: 0, ph: stridePhase(v, x, y, 0.86), t: t + v.id, variant: 'v' + v.pal, carry: v.carry, alpha: v.alpha, side: v.face || 1 };
     if (moving) o.kind = v.carry ? 'carry' : 'walk';
     else if (v.act === 'work') { o.kind = 'work'; o.u = ((t * 1.1 + v.id * 0.37) % 1); }
     else if (v.carry) o.kind = 'carry';

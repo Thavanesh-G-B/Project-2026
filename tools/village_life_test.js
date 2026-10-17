@@ -105,6 +105,38 @@ const out = process.argv[2] || '/tmp';
   const bld = await page.evaluate(() => ({ spr: ['townhall', 'archer', 'magetower', 'cannon', 'goldmine', 'lumbercamp', 'storage', 'barracks', 'shrine'].every(t => [1, 2, 3].every(L => BART.get(t, L, 0).sprite)), wild: Life.props.filter(p => p.wild).length }));
   check('buildings draw from the sprite atlas, wild props scattered', bld.spr && bld.wild > 20, JSON.stringify(bld));
 
+  // 9. buildings fit their footprints (no sideways spill over neighbours) and clicking a sprite selects that building
+  const fit = await page.evaluate(() => {
+    const bad = [];
+    for (const t of Object.keys(BSPR)) for (let L = 1; L <= 3; L++) { const d = BDEF[t], s = BART.get(t, L, 0); if (s.canvas.width - 24 > (d.w + d.d) * 32 + 2) bad.push(`${t}${L}:${s.canvas.width - 24}>${(d.w + d.d) * 32}`); }
+    return bad;
+  });
+  check('every building sprite fits inside its footprint width', fit.length === 0, JSON.stringify(fit));
+  const pick = await page.evaluate(() => {
+    V.res.gold = 9999; V.res.wood = 9999; for (const e of V.enemies) e.dead = true; V.enemies = [];
+    UI.follow = false; document.getElementById('bFollow').classList.remove('active'); const a = buildNew('storage', MID + 5, MID - 1), c = buildNew('cannon', MID + 8, MID - 1); for (let k = 0; k < 40 * 25; k++) step(1 / 40);
+    UI.cam.zoom = 1; centerOn(MID + 7, MID); const r = document.getElementById('v').getBoundingClientRect(), out = {};
+    for (const t of ['storage', 'cannon']) { const b = V.buildings.find(q => q.type === t && q.i >= MID + 5); if (!b) { out[t] = 'missing'; continue; } const x = isoX(b.i + b.w / 2, b.j + b.d / 2), y = isoY(b.i + b.w / 2, b.j + b.d / 2) - 40; out[t] = [r.left + (x - UI.cam.x) * UI.cam.zoom + UI.W / 2, r.top + (y - UI.cam.y) * UI.cam.zoom + UI.H / 2]; }
+    return { a, c, out };
+  });
+  for (const t of ['storage', 'cannon']) {
+    if (!Array.isArray(pick.out[t])) { check('click selects ' + t, false, JSON.stringify(pick)); continue; }
+    await page.mouse.click(pick.out[t][0], pick.out[t][1]); await page.waitForTimeout(120);
+    const sel = await page.evaluate(() => V.selected && V.selected.type);
+    check('clicking the ' + t + ' sprite selects it', sel === t, String(sel));
+  }
+
+  // 10. walk animation follows the ground: the stride phase advances in proportion to the distance walked
+  const gait = await page.evaluate(async () => {
+    V.selected = null; V.selHero = false; V.hero.dead = false; V.hero.i = MID + 0.5; V.hero.j = MID + 9.5; V.hero.path = []; UI.cam.zoom = 1; UI.follow = true; centerOn(V.hero.i, V.hero.j);
+    await new Promise(r => setTimeout(r, 200)); const h = V.hero; h._ph = 0; h._lx = undefined; orderMove(MID + 9.5, MID + 9.5);
+    const x0 = isoX(h.i, h.j), y0 = isoY(h.i, h.j);
+    await new Promise(r => setTimeout(r, 1500));
+    const d = Math.hypot(isoX(h.i, h.j) - x0, isoY(h.i, h.j) - y0);
+    return { dist: Math.round(d), ph: +h._ph.toFixed(2), cycles: +(h._ph / 6.2832).toFixed(2), expected: +(d / 52).toFixed(2) };
+  });
+  check('stride phase tracks distance walked (no foot skating)', gait.dist > 60 && Math.abs(gait.cycles - gait.expected) < 0.35, JSON.stringify(gait));
+
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();
   process.exit(errors.length || fail ? 1 : 0);

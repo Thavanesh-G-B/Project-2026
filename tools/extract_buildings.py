@@ -9,6 +9,19 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
+def defringe(rgba):
+    a = rgba[..., 3] > 0
+    core = ndi.binary_erosion(a, structure=np.ones((3, 3)), iterations=2)
+    if core.any():
+        idx = ndi.distance_transform_edt(~core, return_indices=True)[1]
+        near = rgba[..., :3][idx[0], idx[1]].astype(float); cur = rgba[..., :3].astype(float)
+        lum = lambda c: c @ np.array([0.3, 0.59, 0.11])
+        bad = (a & ~core) & (lum(cur) > lum(near) + 14)
+        cur[bad] = near[bad] * 0.6
+        rgba[..., :3] = np.clip(cur, 0, 255).astype(np.uint8)
+    rgba[~a, :3] = 0
+    return rgba
+
 SRC = {n: np.array(Image.open(f'assets/source/ref_{n}.webp').convert('RGB')).astype(float) for n in (7, 8, 9)}
 
 # name: (sheet, (x0, y0, x1, y1), [boxes to blank out], options)
@@ -41,9 +54,8 @@ S = {
     'cannon_a':   (8, (345, 420, 474, 524), [], {}),
     # ---- sheet 9: painterly set
     'hall_timber':(9, (18, 52, 264, 302), [], {}),
-    'archer_b':   (9, (262, 165, 358, 340), [(366, 280, 420, 340)], {}),
     'mage_c':     (9, (425, 168, 542, 340), [(538, 250, 600, 340)], {}),
-    'cannon_b':   (9, (650, 185, 832, 345), [], {}),
+    'cannon_b':   (9, (650, 185, 864, 345), [(852, 185, 870, 345)], {}),
     'tesla':      (9, (850, 195, 1002, 336), [], {}),
     'mine_wood':  (9, (770, 52, 882, 162), [], {}),
     'mine_rock':  (9, (884, 52, 982, 162), [], {}),
@@ -87,9 +99,52 @@ def cut(sheet, box, blank):
     rgba[..., :3] = a[ty0:ty1, tx0:tx1].astype(np.uint8); rgba[..., 3] = m[ty0:ty1, tx0:tx1] * 255
     return rgba
 
+# extra clean-up in sprite coordinates (x0, y0, x1, y1): props that belong to the sheet picture, not to the building
+POST = {
+    'hall_timber': [(0, 112, 31, 226), (186, 146, 226, 226)],          # signpost on the left, well on the right (the village has its own well)
+    'cannon_b': [(24, 20, 33, 31)],                                     # paper seen through a gap in the battlements
+    'mage_c': [(0, 56, 24, 76), (65, 80, 80, 105), (0, 108, 12, 124)],  # wisps of the spell effect
+}
+
+sheet_of = {n: v[0] for n, v in S.items()}
+
+def finish(name, rgba):
+    a = rgba[..., 3] > 0
+    for (x0, y0, x1, y1) in POST.get(name, []): a[y0:y1, x0:x1] = False
+    # tan ground-shadow crumbs that hug the silhouette edge (sheets 8 and 9 only; stone and snow are grey, not tan)
+    if sheet_of[name] != 7:
+        for _ in range(3):
+            ring = a & ~ndi.binary_erosion(a, structure=np.ones((3, 3)), iterations=3)
+            rgb = rgba[..., :3].astype(float); mx, mn = rgb.max(2), rgb.min(2); sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1), 0); lum = rgb @ np.array([0.3, 0.59, 0.11])
+            tan = (sat > 0.1) & (sat < 0.36) & (lum > 140) & (lum < 225) & (rgb[..., 0] - rgb[..., 2] > 20) & (rgb[..., 0] >= rgb[..., 1])
+            a &= ~(ring & tan)
+    lab_, n_ = ndi.label(a, structure=np.ones((3, 3)))
+    if n_ > 1:
+        sizes = ndi.sum(a, lab_, range(1, n_ + 1)); a = np.isin(lab_, [i + 1 for i, z in enumerate(sizes) if z > 0.04 * sizes.max()])
+    rgba = rgba.copy(); rgba[..., 3] = a * 255
+    ys, xs = np.where(a); rgba = rgba[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    rgba = defringe(rgba)
+    # one shared dark outline so sprites from different sheets read as one set (and no pale fringe is left)
+    a = rgba[..., 3] > 0
+    pad = np.zeros((rgba.shape[0] + 4, rgba.shape[1] + 4, 4), np.uint8); pad[2:-2, 2:-2] = rgba
+    pa = pad[..., 3] > 0; ring = ndi.binary_dilation(pa, structure=ndi.generate_binary_structure(2, 1)) & ~pa
+    pad[ring] = (38, 26, 20, 255)
+    # even out saturation / brightness between the three sheets
+    body = pa; rgb = pad[..., :3].astype(float) / 255; mx, mn = rgb.max(2), rgb.min(2)
+    S_ = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0); V_ = mx
+    kS = float(np.clip(0.40 / max(0.05, S_[body].mean()), 0.8, 1.25)); kV = float(np.clip(0.50 / max(0.05, V_[body].mean()), 0.88, 1.18))
+    import colorsys
+    flat = rgb[body]; out = np.empty_like(flat)
+    h_ = np.zeros(len(flat)); 
+    for i, (r, g, b) in enumerate(flat):
+        h, sv, vv = colorsys.rgb_to_hsv(r, g, b); out[i] = colorsys.hsv_to_rgb(h, min(1, sv * kS), min(1, vv * kV))
+    rgb[body] = out; pad[..., :3] = np.where(ring[..., None], pad[..., :3], (rgb * 255).astype(np.uint8))
+    pad[~(pad[..., 3] > 0), :3] = 0
+    return pad
+
 frames = {}
 for name, (sheet, box, blank, opt) in S.items():
-    frames[name] = cut(sheet, box, blank)
+    frames[name] = finish(name, defringe(cut(sheet, box, blank)))
 names = list(frames)
 PAD = 3; AW = 1400; x = y = rowh = 0; rects = {}
 for n in names:

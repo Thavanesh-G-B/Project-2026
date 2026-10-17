@@ -206,9 +206,18 @@ function unitRing(x, y, rx, color, pulse) {
   ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.65 + 0.35 * p; ctx.beginPath(); ctx.ellipse(x, y, rx, rx * 0.5, 0, 0, 6.283); ctx.stroke();
   ctx.globalAlpha = 0.12 + 0.08 * p; ctx.fillStyle = color; ctx.fill(); ctx.restore();
 }
+// Walk animation follows the ground: the phase advances with the distance actually travelled on screen (one full
+// stride cycle per 52 px at sprite scale 1), so the feet do not skate however fast a unit moves.
+function stridePhase(u, x, y, s) {
+  const lx = u._lx, ly = u._ly; u._lx = x; u._ly = y;
+  if (lx === undefined) return u._ph || 0;
+  const d = Math.hypot(x - lx, y - ly);
+  if (d > 0.05 && d < 60) u._ph = (u._ph || 0) + d / (52 * s) * 6.2832;
+  return u._ph || 0;
+}
 function drawHero(h, t) {
   const x = isoX(h.i, h.j), y = isoY(h.i, h.j) + 2, S = 1.0;
-  const moving = (h.path && h.path.length > 0) || h.kbMove, yaw = turnTo(h, yawOf(h), 14);
+  const moving = (h.path && h.path.length > 0) || h.kbMove, yaw = turnTo(h, yawOf(h), 14), sph = stridePhase(h, x, y, S);
   const dim = h.inv > 0 && h.hurt <= 0 && Math.floor(h.inv * 20) % 2 === 0 ? 0.6 : 1;
   const tier = heroTier(), variant = tier ? 'a' + tier : 'hero';
   const o = { x, y, s: S, yaw, kind: 'idle', u: 0, ph: 0, t, variant, alpha: dim, side: h.face || 1 };
@@ -222,7 +231,7 @@ function drawHero(h, t) {
   else if (h.strikeT >= 0) { o.kind = 'strike'; o.u = clamp(h.strikeT / 0.5, 0, 1); }
   else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
   else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
-  else if (moving) { o.kind = 'walk'; o.ph = h.walkT * 7.05; }
+  else if (moving) { o.kind = 'walk'; o.ph = sph; }
   Hero.draw(ctx, o);
   if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
   if (o.kind === 'strike') {                                 // charge: light gathers on the raised blade; slam: ground flash
@@ -238,10 +247,10 @@ function drawHero(h, t) {
 function drawGuard(gd, t) {
   const x = isoX(gd.i, gd.j), y = isoY(gd.i, gd.j) + 2;
   shadowAt(x, y, 14, 5.5, 0.28);
-  const yaw = turnTo(gd, yawOf(gd), 12), walking = gd.path && gd.path.length > 0 && gd.atk < 0;
+  const sph = stridePhase(gd, x, y, 0.94), yaw = turnTo(gd, yawOf(gd), 12), walking = gd.path && gd.path.length > 0 && gd.atk < 0;
   const o = { x, y, s: 0.94, yaw, kind: 'idle', u: 0, ph: 0, t: t + gd.id, variant: 'a' + clamp(gd.level, 1, 3), side: gd.face || 1 };
   if (gd.atk >= 0) { o.kind = 'attack'; o.u = clamp(gd.atk / 0.45, 0, 1); }
-  else if (walking) { o.kind = 'walk'; o.ph = gd.walkT * 7.05; }
+  else if (walking) { o.kind = 'walk'; o.ph = sph; }
   if (gd.hurt > 0) o.flash = 'rgba(255,50,40,.4)';
   Hero.draw(ctx, o);
   if (o.kind === 'attack') swordArc(x, y, o.side, o.u);

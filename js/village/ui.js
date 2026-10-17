@@ -21,6 +21,16 @@ function pickHero(wx, wy) {
   return Math.hypot(wx - isoX(h.i, h.j), wy - (isoY(h.i, h.j) - 30)) < 30 ? h : null;
 }
 function pickBuilding(wx, wy) {
+  // first the building whose picture is under the cursor (front-most wins); then fall back to the footprint under it
+  let best = null, bk = -1;
+  for (const b of V.buildings) {
+    if (b.state === 'ruin') continue;
+    const lvl = b.state === 'building' && !b.up ? 1 : b.level, s = BART.get(b.type, lvl, b.type === 'wall' ? wallMask(b) : 0);
+    const cx = isoX(b.i + b.w / 2, b.j + b.d / 2), cy = isoY(b.i + b.w / 2, b.j + b.d / 2), W = s.canvas.width, H = s.canvas.height;
+    const x0 = cx - s.ox + W * 0.18, x1 = cx - s.ox + W * 0.82, y0 = cy - s.oy + H * 0.08, y1 = cy - s.oy + H * 0.96;
+    if (wx >= x0 && wx <= x1 && wy >= y0 && wy <= y1) { const k = b.i + b.j + b.w + b.d; if (k > bk) { bk = k; best = b; } }
+  }
+  if (best) return best;
   for (const dy of [0, 14, 28, 44, 62, 82]) {
     const g = groundTile(wx, wy + dy), o = occAt(g.i, g.j);
     if (o > 0) return bById(o);

@@ -95,33 +95,35 @@ const BLD = {
   load() { return new Promise((res, rej) => { const i = new Image(); i.onload = () => { this.img = i; res(); }; i.onerror = () => rej(new Error('Could not load bld.png')); i.src = 'assets/sprites/bld.png'; }); },
   f(k) { return window.BLD_ATLAS.frames[k]; },
 };
-// type -> per level [sprite, scale]; glow: [x fraction, y fraction from top, rgb]
+// type -> per level [sprite, target height in px]. The width is always capped to the footprint (w + d) * 32 so a building
+// never spills over its neighbours; `lift` pulls the sprite's front corner in from the footprint's front corner.
 const BSPR = {
-  townhall:   { lv: [['hall_timber', 0.88], ['hall_stone', 1.22], ['hall_stone', 1.3]], lift: 0.18 },
-  barracks:   { lv: [['h_thatch', 0.72], ['h_thatch', 0.76], ['h_thatch', 0.8]], lift: 0.12 },
-  archer:     { lv: [['archer_a', 0.9], ['archer_b', 0.86], ['archer_c', 0.9]], lift: 0.14 },
-  magetower:  { lv: [['mage_a', 0.86], ['mage_b', 0.88], ['mage_c', 0.95]], lift: 0.14, glow: [0.5, 0.2, [120, 200, 255]] },
-  cannon:     { lv: [['cannon_a', 0.95], ['cannon_b', 0.86], ['cannon_b', 0.92]], lift: 0.12 },
-  mortar:     { lv: [['cannon_b', 0.82], ['cannon_b', 0.88], ['cannon_b', 0.94]], lift: 0.12 },
-  goldmine:   { lv: [['mine_gold', 0.95], ['mine_wood', 1.3], ['mine_rock', 1.4]], lift: 0.1 },
-  lumbercamp: { lv: [['lumber', 0.98], ['lumber', 1.05], ['lumber', 1.12]], lift: 0.1 },
-  storage:    { lv: [['farm', 0.96], ['farm', 1.02], ['farm', 1.08]], lift: 0.1 },
-  builderhut: { lv: [['house_b', 0.74]], lift: 0.12 },
-  shrine:     { lv: [['mage_spiral', 0.86], ['mage_spiral', 0.92], ['mage_spiral', 0.98]], lift: 0.14, glow: [0.5, 0.06, [130, 220, 255]] },
+  townhall:   { lv: [['hall_timber', 215], ['hall_timber', 225], ['hall_timber', 235]], lift: 0.16 },
+  barracks:   { lv: [['hall_stone', 150], ['hall_stone', 156], ['hall_stone', 162]], lift: 0.12 },
+  archer:     { lv: [['archer_c', 140], ['archer_c', 150], ['archer_c', 160]], lift: 0.12 },
+  magetower:  { lv: [['mage_c', 150], ['mage_c', 157], ['mage_c', 165]], lift: 0.14, glow: [0.5, 0.1, [120, 200, 255]] },
+  cannon:     { lv: [['cannon_b', 120], ['cannon_b', 128], ['cannon_b', 136]], lift: 0.12 },
+  mortar:     { lv: [['cannon_a', 100], ['cannon_a', 106], ['cannon_a', 112]], lift: 0.12 },
+  goldmine:   { lv: [['mine_gold', 94], ['mine_gold', 98], ['mine_gold', 102]], lift: 0.1 },
+  lumbercamp: { lv: [['lumber', 100], ['lumber', 106], ['lumber', 112]], lift: 0.1 },
+  storage:    { lv: [['farm', 92], ['farm', 96], ['farm', 100]], lift: 0.1 },
+  builderhut: { lv: [['house_b', 105]], lift: 0.12 },
+  shrine:     { lv: [['mage_spiral', 150], ['mage_spiral', 157], ['mage_spiral', 165]], lift: 0.14, glow: [0.5, 0.04, [130, 220, 255]] },
 };
 
 const BART = {
   cache: new Map(),
   fromAtlas(type, L) {
-    const m = BSPR[type], [key, sc] = m.lv[Math.min(L, m.lv.length) - 1], F = BLD.f(key), def = BDEF[type];
-    const [fx, fy, fw, fh] = F, W = Math.ceil(fw * sc) + 24, H = Math.ceil(fh * sc) + 16;
+    const m = BSPR[type], [key, th] = m.lv[Math.min(L, m.lv.length) - 1], F = BLD.f(key), def = BDEF[type];
+    const [fx, fy, fw, fh] = F, sc = Math.min(th / fh, (def.w + def.d) * 32 / fw);
+    const W = Math.ceil(fw * sc) + 24, H = Math.ceil(fh * sc) + 16;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
     g.drawImage(BLD.img, fx, fy, fw, fh, 12, 4, fw * sc, fh * sc);
     // ox: horizontal centre; oy: distance from the canvas top to the footprint centre. The sprite's bottom corner sits on the
     // footprint's front corner (half a diamond below its centre), pulled in a little by `lift`.
     const half = (def.w + def.d) * 8, front = half * (1 - (m.lift || 0));
-    const out = { canvas: c, ox: W / 2, oy: H - 4 - front, sprite: key };
+    const out = { canvas: c, ox: W / 2, oy: H - 4 - front, sprite: key, scale: sc };
     if (m.glow) out.glow = { x: 0, y: -(H - 4 - front) + 4 + fh * sc * m.glow[1], color: m.glow[2] };
     return out;
   },
@@ -245,11 +247,12 @@ const BART = {
         const arms = [];   // far arms first, near arms last
         if (mask & 2) arms.push([-0.5, -0.2, -0.2, 0.2]);
         if (mask & 8) arms.push([-0.2, -0.5, 0.2, -0.2]);
-        for (const a of arms) cuboid(g, a[0], a[1], a[2], a[3], 0, 17, stone, tx);
-        cuboid(g, -0.24, -0.24, 0.24, 0.24, 0, 21, stone, tx);
-        if (mask & 1) cuboid(g, 0.2, -0.2, 0.5, 0.2, 0, 17, stone, tx);
-        if (mask & 4) cuboid(g, -0.2, 0.2, 0.2, 0.5, 0, 17, stone, tx);
-        cuboid(g, -0.3, -0.3, 0.3, 0.3, 21, 25, stone.map(v => v * 0.9), null);
+        const hA = 22 + L * 4, hP = hA + 6;                     // arms / posts get taller with the level
+        for (const a of arms) cuboid(g, a[0], a[1], a[2], a[3], 0, hA, stone, tx);
+        cuboid(g, -0.27, -0.27, 0.27, 0.27, 0, hP, stone, tx);
+        if (mask & 1) cuboid(g, 0.2, -0.2, 0.5, 0.2, 0, hA, stone, tx);
+        if (mask & 4) cuboid(g, -0.2, 0.2, 0.2, 0.5, 0, hA, stone, tx);
+        cuboid(g, -0.33, -0.33, 0.33, 0.33, hP, hP + 5, stone.map(v => v * 0.9), null);
         break;
       }
       case 'trap': {

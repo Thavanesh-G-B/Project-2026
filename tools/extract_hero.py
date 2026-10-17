@@ -8,6 +8,22 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage as ndi
 
+def defringe(rgba):
+    """Remove the pale paper halo around a cut-out: edge pixels brighter than the body just inside them are recoloured
+    from that body (darkened a little so the silhouette keeps its outline). Transparent pixels get black RGB."""
+    a = rgba[..., 3] > 0
+    core = ndi.binary_erosion(a, structure=np.ones((3, 3)), iterations=2)
+    if core.any():
+        idx = ndi.distance_transform_edt(~core, return_indices=True)[1]
+        near = rgba[..., :3][idx[0], idx[1]].astype(float); cur = rgba[..., :3].astype(float)
+        lum = lambda c: c @ np.array([0.3, 0.59, 0.11])
+        ring = a & ~core
+        bad = ring & (lum(cur) > lum(near) + 14)
+        cur[bad] = near[bad] * 0.6
+        rgba[..., :3] = np.clip(cur, 0, 255).astype(np.uint8)
+    rgba[~a, :3] = 0
+    return rgba
+
 SRC = 'assets/source/hero_sheet.webp'
 im = np.array(Image.open(SRC).convert('RGB')).astype(int)
 H, W, _ = im.shape
@@ -32,6 +48,9 @@ objs = ndi.find_objects(lab)
 
 # cell x positions measured from the sheet (left edge of each component), per row
 ROW1 = (86, 160); ROW2 = (186, 261)
+# vertical grid lines of the walk sheet: a frame's cell centre is the true horizontal position of the character
+GRID = {'N': [17, 63.5, 110.5, 157, 204, 247, 289], 'NE': [289, 334, 383.5, 426.5, 468.5, 511], 'E': [511, 554.5, 596.5, 640, 689.5, 733.5], 'SE': [733.5, 776.5, 819, 866, 912.5, 959.5, 1006.5]}
+GRID['S'], GRID['SW'], GRID['W'], GRID['NW'] = GRID['N'], GRID['NE'], GRID['E'], GRID['SE']
 LAYOUT = {
     # name: (row y-range, x lefts)
     'N':  (ROW1, [25, 72, 118, 166, 211, 254]),
@@ -60,7 +79,7 @@ def find_obj(xl, yr):
             if best is None or (lab[s] == i + 1).sum() > best[1]: best = (i, (lab[s] == i + 1).sum())
     return best[0] + 1 if best else None
 
-def cut(label_id, yr, erase=(), keep_shadowless=True, weapon=False, restore=()):
+def cut(label_id, yr, erase=(), keep_shadowless=True, weapon=False, restore=(), cellx=None):
     comp = lab == label_id
     # recover thin detail around the opened component, but only close to it
     if weapon:       # thin blades vanish in the opening: follow the connected pixels out from the body, inside a window
@@ -84,6 +103,13 @@ def cut(label_id, yr, erase=(), keep_shadowless=True, weapon=False, restore=()):
     shadow = (mx - mn <= 16) & (mean >= 95) & (mean <= 160)
     hh = mm.shape[0]
     low = np.zeros_like(mm); low[int(hh * (0.74 if weapon else 0.0)):, :] = True
+    sh0 = shadow & low & mm
+    shc = None
+    if sh0.sum() > 40:                                                  # the sheet's own ground shadow marks where the feet really are
+        sl, sn = ndi.label(sh0, structure=np.ones((3, 3)))
+        big = int(np.argmax(ndi.sum(sh0, sl, range(1, sn + 1)))) + 1
+        yy, xx = np.where(sl == big)
+        if len(yy) > 40: shc = (float(xx.mean()) + x0, float(yy.mean()) + y0)
     mm &= ~(shadow & low)
     # drop the specks that removing the shadow leaves behind, and any light halo
     halo = (np.abs(rgb - BG).sum(2) < (52 if weapon else 80))        # steel blades are nearly as light as the paper
@@ -104,11 +130,16 @@ def cut(label_id, yr, erase=(), keep_shadowless=True, weapon=False, restore=()):
     rgb = rgb[ty0:ty1, tx0:tx1]; mm = mm[ty0:ty1, tx0:tx1]
     rgba = np.zeros(rgb.shape[:2] + (4,), np.uint8); rgba[..., :3] = rgb; rgba[..., 3] = mm * 255
     global LAST_ORIGIN; LAST_ORIGIN = (x0 + tx0, y0 + ty0)
-    # anchor: x = centre of the blue tunic, y = sole of the lowest boot
+    # anchor: the centre of the baked ground shadow (same place in every frame, so the feet do not jitter); else tunic / sole
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
     blue = mm & (b > r + 25)
     ax = float(np.where(blue)[1].mean()) if blue.sum() > 30 else mm.shape[1] / 2
     ay = mm.shape[0] - 1
+    if shc is not None:
+        ay = min(mm.shape[0] - 1, max(0.0, shc[1] - LAST_ORIGIN[1]))
+        if not weapon: ax = shc[0] - LAST_ORIGIN[0]
+    if cellx is not None: ax = cellx - LAST_ORIGIN[0]
+    rgba = defringe(rgba)
     return rgba, ax, ay
 
 frames = {}
@@ -117,7 +148,7 @@ for d, (yr, xs_) in LAYOUT.items():
     for k, xl in enumerate(xs_):
         oid = find_obj(xl, yr)
         assert oid, (d, k, xl)
-        frames[f'w_{d}_{k}'] = cut(oid, yr)
+        g = GRID[d]; frames[f'w_{d}_{k}'] = cut(oid, yr, cellx=(g[k] + g[k + 1]) / 2)
 for name, spec in ACT.items():
     xl, yr, erase = spec[:3]; restore = spec[3] if len(spec) > 3 else ()
     oid = find_obj(xl, yr); assert oid, name
@@ -206,5 +237,14 @@ for vname, spec in VARIANTS:
         out = recolor(rgba, spec, lying=nme.startswith('dead')) if spec else rgba
         atlas[py:py + h, px:px + w] = out
     Image.fromarray(atlas).save(f'assets/sprites/hero_{vname}.png', optimize=True)
-open('assets/sprites/hero.js', 'w').write('window.HERO_ATLAS=' + json.dumps({'w': AW, 'h': AH, 'frames': rects, 'variants': [v for v, _ in VARIANTS]}, separators=(',', ':')) + ';\n')
+idle = {}
+for d in LAYOUT:
+    best = None; k = 0
+    while f'w_{d}_{k}' in frames:
+        rgba = frames[f'w_{d}_{k}'][0]; h = rgba.shape[0]; low = rgba[int(h * 0.82):, :, 3] > 0
+        cols = np.where(low.any(0))[0]; spread = (cols.max() - cols.min()) if len(cols) else 99
+        if best is None or spread < best[0]: best = (spread, k)
+        k += 1
+    idle[d] = best[1]
+open('assets/sprites/hero.js', 'w').write('window.HERO_ATLAS=' + json.dumps({'w': AW, 'h': AH, 'frames': rects, 'variants': [v for v, _ in VARIANTS], 'idle': idle}, separators=(',', ':')) + ';\n')
 print('atlas', AW, AH)

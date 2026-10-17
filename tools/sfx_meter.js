@@ -9,13 +9,13 @@ const path = require('path');
   await page.goto('file://' + path.resolve('village.html'));
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 15000 });
   const rows = await page.evaluate(async () => {
+    window.requestAnimationFrame = () => 0; await new Promise(r => setTimeout(r, 200));   // idle the render loop so short sounds are not missed by the poll
     Sfx.init(); await Sfx.ctx.resume(); Sfx.setMusic('off', true); Sfx.setMuted(false);
     const names = Object.keys(window.__voices || {}).length ? [] : [];
     const res = [];
     for (const n of ['slash', 'hit', 'clang', 'thud', 'hurt', 'jump', 'dash', 'charge', 'strike', 'mine', 'chop', 'creak', 'crash', 'break', 'hammer', 'place', 'pickup', 'coin', 'power', 'craft', 'upgrade', 'done', 'click', 'open', 'deny', 'step', 'stepStone', 'stepDirt', 'arrow', 'cannon', 'mortar', 'explode', 'magic', 'cast', 'summon', 'heal', 'zombie', 'skeleton', 'die', 'horn', 'night', 'boss', 'dawn', 'cloud', 'fire']) {
-      Sfx.last = {}; let peak = 0; const t0 = performance.now();
-      Sfx.play(n, { vol: 1 });
-      while (performance.now() - t0 < 1500) { await new Promise(r => setTimeout(r, 8)); peak = Math.max(peak, Sfx.peak()); }
+      let peak = 0;
+      for (let rep = 0; rep < 2; rep++) { Sfx.last = {}; const t0 = performance.now(); Sfx.play(n, { vol: 1 }); while (performance.now() - t0 < (rep ? 500 : 1500)) { await new Promise(r => setTimeout(r, 4)); peak = Math.max(peak, Sfx.peak()); } }
       res.push([n, +peak.toFixed(3)]);
     }
     return res;
