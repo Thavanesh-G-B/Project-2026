@@ -55,9 +55,9 @@ function setTool(t) {
 function startPlacing(type) {
   UI.place = { type }; UI.tool = 'place'; closeShop();
   setHint(`Placing ${BDEF[type].name}. Click an empty spot to build. Right-click or Esc to cancel.${type === 'wall' ? ' Hold and drag to build a line.' : ''}`);
-  canvas.style.cursor = 'copy';
+  canvas.style.cursor = 'copy'; qbSig = ''; refreshQuickBar();
 }
-function cancelPlace() { if (UI.place) { UI.place = null; setTool('move'); } }
+function cancelPlace() { if (UI.place) { UI.place = null; setTool('move'); qbSig = ''; refreshQuickBar(); } }
 function setHint(text) { if (text) $('info').innerHTML = `<p>${text}</p>`; else refreshInfo(); }
 
 let dragState = null;
@@ -131,7 +131,8 @@ let toastTimer = 0;
 function toast2(msg) { const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2800); Sfx.play('deny'); }
 V.cb.toast = msg => { const el = $('toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200); };
 V.cb.banner = (text, sub) => { UI.banner = { text, sub, t: 0 }; };
-V.cb.changed = () => { refreshInfo(); refreshButtons(); };
+V.cb.changed = () => { refreshInfo(); refreshButtons(); refreshQuickBar(); };
+V.cb.expanded = (level, instant) => { Clouds.expanded(level, instant, UI.time); clampCam(); };
 
 function select(b) { V.selected = b; refreshInfo(); }
 function statLines(b) {
@@ -141,6 +142,9 @@ function statLines(b) {
   if (d.kind === 'storage') out.push(`Adds ${d.cap[L]} gold and wood capacity`);
   if (d.kind === 'core') out.push(`Base storage ${d.cap[L]} each`, `Builders ${builderCount()}`);
   if (d.kind === 'trap') out.push(`Damage ${d.dmg[L]}`, b.armed ? 'Armed' : 'Sprung (re-arms after the raid)');
+  if (d.kind === 'shrine') out.push(`Heals units ${d.heal[L]}/s`, `Mends buildings ${d.mend[L]}/s`, `Radius ${d.radius} tiles`);
+  if (d.kind === 'hut') out.push('+1 builder');
+  if (d.minRange) out.push(`Cannot hit within ${d.minRange} tiles`);
   if (d.kind === 'barracks') out.push(`Trains ${d.guards[L]} guards (HP ${d.ghp[L]}, damage ${d.gdmg[L]})`);
   return out.filter(Boolean);
 }
@@ -150,11 +154,11 @@ function refreshInfo() {
     V.selected = null;
     el.innerHTML = V.raid.active
       ? `<p><b>Raid ${V.raid.n} in progress.</b> Right-click an enemy to attack it with your hero, or press <b>Hero strike</b> for a shockwave. Defenses fire on their own.</p>`
-      : `<p>The whole island is yours. Drag to explore, tap a mine or lumber camp to collect, and use the <b>Village shop</b> to build defenses. Right-click moves your hero. Start a raid when you are ready.</p>`;
+      : `<p>Welcome to your village. Clouds hide the land you have not claimed yet: use <b>Expand map</b> to push them back. Tap a mine or lumber camp to collect, build from the <b>quick bar</b> or the <b>Village shop</b>, and right-click to command your hero. Start a raid when you are ready.</p>`;
     return;
   }
   const d = BDEF[b.type];
-  let h = `<div class="selhead"><b>${d.name}</b> <span class="lv">Level ${b.level}${b.type === 'townhall' ? '' : ' / ' + hallLevel()}</span></div>`;
+  let h = `<div class="selhead"><b>${d.name}</b> <span class="lv">Level ${b.level}${b.type === 'townhall' || (d.maxLevel === 1) ? '' : ' / ' + hallLevel()}</span></div>`;
   if (b.state === 'ruin') {
     h += `<p>Ruins. Rebuild at half cost: ${costHtml(rebuildCost(b))}</p><div class="acts"><button class="btn gold" id="aRebuild">Rebuild</button></div>`;
   } else if (b.state === 'building') {
@@ -162,10 +166,10 @@ function refreshInfo() {
   } else {
     h += `<p>${d.desc}</p><p class="stats">HP ${Math.ceil(b.hp)} / ${b.maxHp} · ${statLines(b).join(' · ')}</p><div class="acts">`;
     if (d.kind === 'collector') h += `<button class="btn gold" id="aCollect">Collect ${Math.floor(b.prod)} ${d.res}</button>`;
-    if (b.level < 3) {
+    if (b.level < (d.maxLevel || 3)) {
       const why = upgradeCheck(b), c = d.cost[b.level];
       h += `<button class="btn ${why ? '' : 'gold'}" id="aUpgrade" title="${why || ''}">Upgrade to ${b.level + 1}</button><span class="costs">${costHtml(c)} <span class="cost">${d.time[b.level]}s</span></span>`;
-    } else h += '<span class="costs">Max level</span>';
+    } else if (!d.maxLevel) h += '<span class="costs">Max level</span>';
     h += '</div>';
   }
   el.innerHTML = h;
@@ -179,6 +183,9 @@ function refreshButtons() {
   const rb = $('tRaid');
   rb.textContent = r.active ? `Raid ${r.n} · ${r.queue.length + V.enemies.filter(e => !e.dying).length} left` : `Start raid ${r.n}`;
   rb.disabled = r.active || V.state !== 'play';
+  const ex = expandInfo(), eb = $('tExpand');
+  eb.querySelector('span').textContent = ex ? `☁ Expand map  ◉${ex.gold} ⌾${ex.wood}${hallLevel() < ex.th ? ' (Hall ' + ex.th + ')' : ''}` : '☁ Map fully open';
+  eb.disabled = !ex; eb.classList.toggle('short', !!ex && !!expandCheck());
   $('chipState').textContent = V.state === 'lost' ? 'Village fallen' : r.active ? `Raid ${r.n} in progress` : 'Peaceful preparation';
   $('chipState').classList.toggle('danger', r.active);
 }
@@ -193,33 +200,73 @@ function refreshHud() {
   sb.querySelector('span').textContent = cd > 0 ? `Hero strike (${Math.ceil(cd)}s)` : 'Hero strike';
   $('pLevel').textContent = `Hero level ${V.heroLevel} · ${V.heroXp}/${24 * V.heroLevel} XP`;
   $('pXp').style.width = (V.heroXp / (24 * V.heroLevel) * 100) + '%';
-  $('mapInfo').textContent = `${GN} × ${GN} · Fully open`;
+  $('mapInfo').textContent = `Territory ${Terr.r * 2 + 1} × ${Terr.r * 2 + 1} of ${GN} × ${GN}${Terr.level >= TERR_R.length ? ' · fully open' : ''}`;
   $('lost').classList.toggle('show', V.state === 'lost');
   if (V.state === 'lost') $('lostStats').textContent = `You repelled ${V.raid.n - 1} raid${V.raid.n === 2 ? '' : 's'}, slew ${V.kills} undead and your hero reached level ${V.heroLevel}.`;
 }
 
-// ---- shop
+// ---- shop and quick-build bar
+let shopCat = 'Economy';
+function thumb(type, size) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const s = BART.get(type, 1, 0), g = cv.getContext('2d'), small = BDEF[type].w === 1 && type !== 'lantern' || type === 'garden';
+  const content = type === 'wall' || type === 'trap' ? size * 0.8 : size * 1.1, sc = Math.min(type === 'wall' || type === 'trap' || type === 'lantern' ? 2.4 : 1.3, content / Math.max(s.canvas.width - 40, s.canvas.height - 30));
+  g.drawImage(s.canvas, size / 2 - s.ox * sc, size * 0.68 - s.oy * sc, s.canvas.width * sc, s.canvas.height * sc);
+  if (type === 'cannon' || type === 'mortar') { const mort = type === 'mortar'; g.strokeStyle = '#1c1c22'; g.lineWidth = (mort ? 15 : 11) * sc; g.lineCap = 'round'; g.beginPath(); g.moveTo(size / 2 - 4, size * 0.68 + s.turret.y * sc); g.lineTo(size / 2 + (mort ? 11 : 22) * sc, size * 0.68 + s.turret.y * sc + (mort ? 6 : 10) * sc); g.stroke(); g.strokeStyle = '#4a4c54'; g.lineWidth = (mort ? 11 : 7) * sc; g.stroke(); }
+  return cv;
+}
+function buildReason(type) {
+  const d = BDEF[type], n = countOf(type), max = maxCount(type);
+  if (max === 0) return `Needs Town Hall ${minHallFor(type)}`;
+  if (n >= max) return 'Limit reached';
+  if (!canAfford(d.cost[0])) return 'Not enough resources';
+  if (busyBuilders() >= builderCount()) return 'Builders busy';
+  return '';
+}
+function tryStartPlacing(type) {
+  const why = buildReason(type);
+  if (why === 'Limit reached') { toast2(`Town Hall level ${hallLevel()} allows ${maxCount(type)} ${BDEF[type].name}${maxCount(type) > 1 ? 's' : ''}. Upgrade it for more.`); return; }
+  if (why === 'Needs Town Hall ' + minHallFor(type)) { toast2(`${BDEF[type].name} ${why.toLowerCase()}.`); return; }
+  if (why) { toast2(why + '.'); return; }
+  startPlacing(type);
+}
 function openShop() {
+  const tabs = $('shopTabs'); tabs.innerHTML = '';
+  for (const c of SHOP_CATS) { const b = document.createElement('button'); b.textContent = c; b.className = c === shopCat ? 'on' : ''; b.onclick = () => { shopCat = c; openShop(); }; tabs.appendChild(b); }
   const grid = $('shopGrid'); grid.innerHTML = '';
   for (const type of SHOP_ORDER) {
-    const d = BDEF[type], n = countOf(type), max = maxCount(type), full = n >= max, cost = d.cost[0];
+    const d = BDEF[type];
+    if (d.cat !== shopCat) continue;
+    const n = countOf(type), max = maxCount(type), cost = d.cost[0], why = buildReason(type);
     const card = document.createElement('button');
-    card.className = 'card-b' + (full ? ' full' : '') + (!canAfford(cost) ? ' poor' : '');
-    const s = BART.get(type, 1, 0), cv = document.createElement('canvas'); cv.width = cv.height = 84;
-    const g = cv.getContext('2d'), content = type === 'wall' || type === 'trap' ? 70 : 96, sc = Math.min(type === 'wall' || type === 'trap' ? 2.4 : 1, content / Math.max(s.canvas.width - 40, s.canvas.height - 30));
-    const ax = 42 - s.ox * sc, ay = 58 - s.oy * sc + (type === 'wall' || type === 'trap' ? 0 : 4);
-    g.drawImage(s.canvas, ax, ay, s.canvas.width * sc, s.canvas.height * sc);
-    if (type === 'cannon') { g.strokeStyle = '#1c1c22'; g.lineWidth = 8 * sc + 2; g.lineCap = 'round'; g.beginPath(); g.moveTo(42 - 4, 58 + s.turret.y * sc); g.lineTo(42 + 22 * sc, 58 + s.turret.y * sc + 10 * sc); g.stroke(); g.strokeStyle = '#4a4c54'; g.lineWidth = 6 * sc + 1; g.stroke(); }
-    card.appendChild(cv);
+    card.className = 'card-b' + (why === 'Limit reached' || why.startsWith('Needs') ? ' full' : '') + (why === 'Not enough resources' ? ' poor' : '');
+    card.appendChild(thumb(type, 84));
     const body = document.createElement('div'); body.className = 'cb';
-    body.innerHTML = `<b>${d.name}</b><small>${d.desc}</small><div class="row">${costHtml(cost)}</div><div class="row meta"><span>${n} / ${max} built</span><span>${d.time[0]}s</span></div>`;
+    body.innerHTML = `<b>${d.name}</b><small>${d.desc}</small><div class="row">${costHtml(cost)}</div><div class="row meta"><span>${why.startsWith('Needs') ? why : n + ' / ' + max + ' built'}</span><span>${d.time[0]}s</span></div>`;
     card.appendChild(body);
-    card.onclick = () => { if (full) { toast2(`Town Hall level ${hallLevel()} allows ${max}. Upgrade it for more.`); return; } if (!canAfford(cost)) { toast2('Not enough resources.'); return; } if (busyBuilders() >= builderCount()) { toast2('All builders are busy.'); return; } startPlacing(type); };
+    card.onclick = () => tryStartPlacing(type);
     grid.appendChild(card);
   }
   $('shop').classList.add('show'); $('shopRes').innerHTML = `${ICO.gold} ${Math.floor(V.res.gold)} gold · ${ICO.wood} ${Math.floor(V.res.wood)} wood · Builders ${builderCount() - busyBuilders()}/${builderCount()}`;
 }
 function closeShop() { $('shop').classList.remove('show'); }
+let qbSig = '';
+function refreshQuickBar() {
+  const bar = $('qbar'); if (!bar) return;
+  const sig = SHOP_ORDER.map(t => buildReason(t) + countOf(t)).join('|') + (UI.place ? UI.place.type : '') + hallLevel();
+  if (sig === qbSig) return; qbSig = sig;
+  bar.innerHTML = '';
+  for (const type of SHOP_ORDER) {
+    if (maxCount(type) === 0) continue;
+    const d = BDEF[type], why = buildReason(type), b = document.createElement('button');
+    b.className = (why ? 'off ' : '') + (UI.place && UI.place.type === type ? 'on' : '');
+    b.appendChild(thumb(type, 50));
+    const n = document.createElement('small'); n.textContent = `${countOf(type)}/${maxCount(type)}`; b.appendChild(n);
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.textContent = `${d.name}: ${Object.keys(d.cost[0]).map(k => d.cost[0][k] + ' ' + k).join(', ')}${why ? ' (' + why + ')' : ''}`; b.appendChild(tip);
+    b.onclick = () => tryStartPlacing(type);
+    bar.appendChild(b);
+  }
+}
 
 // ---- world map
 function drawWorldMap() {
@@ -231,9 +278,12 @@ function drawWorldMap() {
   g.fillStyle = '#8c7658'; for (const [a, b] of [[MID - 1, 0], [0, MID - 1]]) { const q = [P2(a, b), P2(a + (a ? GN : 3), b + (b ? GN : 3)), P2(a + 3, b + GN), P2(a + GN, b + 3)]; }
   g.fillStyle = 'rgba(138,114,84,.9)';
   for (const quad of [[MID - 1, 0, 3, GN], [0, MID - 1, GN, 3]]) { const [i, j, w, d] = quad; g.beginPath(); const q = [P2(i, j), P2(i + w, j), P2(i + w, j + d), P2(i, j + d)]; g.moveTo(...q[0]); for (const p of q.slice(1)) g.lineTo(...p); g.closePath(); g.fill(); }
-  g.fillStyle = '#3d6038'; for (const t of V.trees) if (t.alive) { const p = P2(t.i + 0.5, t.j + 0.5); g.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); }
+  g.fillStyle = 'rgba(224,236,242,.92)';                                   // clouds over land you have not claimed
+  { const lo = MID - Terr.r, hi = MID + Terr.r + 1, q = [P2(0, 0), P2(GN, 0), P2(GN, GN), P2(0, GN)], h = [P2(lo, lo), P2(lo, hi), P2(hi, hi), P2(hi, lo)];
+    g.beginPath(); g.moveTo(...q[0]); for (const p of q.slice(1)) g.lineTo(...p); g.closePath(); g.moveTo(...h[0]); for (const p of h.slice(1)) g.lineTo(...p); g.closePath(); g.fill('evenodd'); }
+  g.fillStyle = '#3d6038'; for (const t of V.trees) if (Terr.has(t.i, t.j)) if (t.alive) { const p = P2(t.i + 0.5, t.j + 0.5); g.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); }
   for (const b of V.buildings) { const p = P2(b.i + b.w / 2, b.j + b.d / 2); g.fillStyle = b.state === 'ruin' ? '#555' : b.type === 'townhall' ? '#e8c24a' : BDEF[b.type].kind === 'defense' ? '#d86a5a' : b.type === 'wall' ? '#aaa' : '#8ab8e0'; const s = b.type === 'wall' ? 2 : 4 + b.w; g.fillRect(p[0] - s / 2, p[1] - s / 2, s, s); }
-  for (const e of V.enemies) { const p = P2(e.i, e.j); g.fillStyle = '#ff4a3a'; g.fillRect(p[0] - 2, p[1] - 2, e.boss ? 6 : 4, e.boss ? 6 : 4); }
+  for (const e of V.enemies) { if (!Terr.has(e.i, e.j)) continue; const p = P2(e.i, e.j); g.fillStyle = '#ff4a3a'; g.fillRect(p[0] - 2, p[1] - 2, e.boss ? 6 : 4, e.boss ? 6 : 4); }
   if (V.hero) { const p = P2(V.hero.i, V.hero.j); g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 4, 0, 6.283); g.fill(); g.strokeStyle = '#3a8ae0'; g.lineWidth = 2; g.stroke(); }
   const vw = UI.W / UI.cam.zoom * sc, vh = UI.H / UI.cam.zoom * sc;
   g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 1.5; g.strokeRect(ox + UI.cam.x * sc - vw / 2, oy + UI.cam.y * sc - vh / 2, vw, vh);
@@ -257,6 +307,7 @@ function wire() {
   $('tMove').onclick = () => setTool('move'); $('tGather').onclick = () => setTool('gather');
   $('tShop').onclick = () => { setTool('move'); openShop(); };
   $('tStrike').onclick = () => heroStrike();
+  $('tExpand').onclick = () => { const why = expandMap(); if (why) toast2(why); };
   $('tRaid').onclick = () => { if (V.hero && V.hero.dead) toast2('Your hero is down, but the raid will begin anyway.'); startRaid(); };
   $('shopClose').onclick = closeShop; $('shop').onclick = e => { if (e.target === $('shop')) closeShop(); };
   $('bMinus').onclick = () => setZoom(UI.cam.zoom / 1.2); $('bPlus').onclick = () => setZoom(UI.cam.zoom * 1.2);
@@ -276,7 +327,7 @@ function wire() {
       case 'Digit1': setTool('move'); break; case 'Digit2': setTool('gather'); break; case 'Digit3': openShop(); break;
       case 'Space': e.preventDefault(); heroStrike(); break; case 'KeyR': startRaid(); break;
       case 'Equal': case 'NumpadAdd': setZoom(UI.cam.zoom * 1.15); break; case 'Minus': case 'NumpadSubtract': setZoom(UI.cam.zoom / 1.15); break;
-      case 'KeyF': $('bFollow').click(); break; case 'KeyM': UI.mapOpen ? closeMap() : openMap(); break; case 'KeyP': $('bPause').click(); break;
+      case 'KeyE': $('tExpand').click(); break; case 'KeyF': $('bFollow').click(); break; case 'KeyM': UI.mapOpen ? closeMap() : openMap(); break; case 'KeyP': $('bPause').click(); break;
     }
   });
   window.addEventListener('resize', resize);
@@ -308,9 +359,9 @@ function refreshInfoLive() {
 function showError(err) { console.error(err); const el = $('err'); el.style.display = 'flex'; el.textContent = 'Something went wrong: ' + err.message; }
 
 Assets.load().then(() => {
-  Trees.build(); wire(); resize();
+  Trees.build(); Clouds.build(); wire(); resize();
   if (!loadGame()) newVillage();
-  const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95;
+  const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95; refreshQuickBar();
   setTool('move'); refreshButtons(); refreshHud();
   window.__ready = true;
   requestAnimationFrame(frame);

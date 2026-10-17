@@ -7,7 +7,7 @@ const V = {
   hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
   heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
-  cb: { toast() { }, changed() { }, banner() { } },   // UI hooks
+  cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
 };
 const tileOf = (v) => Math.floor(v);
 const occAt = (i, j) => (inGrid(i, j) ? V.occ[j * GN + i] : -2);
@@ -32,7 +32,7 @@ function addRes(kind, n) {
 }
 const canAfford = cost => !cost || Object.keys(cost).every(k => V.res[k] >= cost[k]);
 const pay = cost => { for (const k in cost) V.res[k] -= cost[k]; };
-const builderCount = () => 1 + hallLevel();
+const builderCount = () => 1 + V.buildings.filter(b => b.type === 'builderhut' && b.state === 'built').length;
 const busyBuilders = () => V.buildings.filter(b => b.state === 'building').length;
 
 // ---------------------------------------------------------------- buildings
@@ -52,14 +52,16 @@ function addBuilding(type, i, j, opt) {
 }
 function tilesFree(i, j, w, d) {
   if (i < 1 || j < 1 || i + w > GN - 1 || j + d > GN - 1) return false;
-  for (let y = j; y < j + d; y++) for (let x = i; x < i + w; x++) if (V.occ[y * GN + x] !== 0) return false;
-  if (V.hero && !V.hero.dead) { /* the hero simply walks out of the way */ }
+  for (let y = j; y < j + d; y++) for (let x = i; x < i + w; x++) if (V.occ[y * GN + x] !== 0 || !Terr.has(x, y)) return false;
   return true;
 }
+const minHallFor = type => { for (let k = 0; k < 3; k++) if (BDEF[type].max[k] > 0) return k + 1; return 3; };
 function countOf(type) { return V.buildings.filter(b => b.type === type).length; }
 function placeCheck(type, i, j) {
   const d = BDEF[type];
+  for (let y = j; y < j + d.d; y++) for (let x = i; x < i + d.w; x++) if (inGrid(x, y) && !Terr.has(x, y)) return 'That land is still hidden by clouds. Expand the map first.';
   if (!tilesFree(i, j, d.w, d.d)) return 'That spot is blocked.';
+  if (maxCount(type) === 0) return `${d.name} needs Town Hall level ${minHallFor(type)}.`;
   if (countOf(type) >= maxCount(type)) return `Town Hall level ${hallLevel()} allows ${maxCount(type)} ${d.name}${maxCount(type) > 1 ? 's' : ''}. Upgrade the Town Hall for more.`;
   if (!canAfford(d.cost[0])) return 'Not enough resources.';
   if (busyBuilders() >= builderCount()) return 'All builders are busy.';
@@ -79,7 +81,7 @@ function buildNew(type, i, j) {
 function upgradeCheck(b) {
   const d = BDEF[b.type];
   if (b.state !== 'built') return 'Not available right now.';
-  if (b.level >= 3) return 'Already at the maximum level.';
+  if (b.level >= (d.maxLevel || 3)) return 'Already at the maximum level.';
   if (b.type !== 'townhall' && b.level >= hallLevel()) return 'Upgrade the Town Hall first.';
   const cost = d.cost[b.level];
   if (!canAfford(cost)) return 'Not enough resources.';
@@ -151,7 +153,8 @@ class Heap {
   get size() { return this.a.length; }
 }
 // cost of entering a tile for a mover; Infinity = blocked
-function tileCost(i, j, walls) {
+function tileCost(i, j, walls, lock) {
+  if (lock && !Terr.has(i, j)) return Infinity;
   const o = occAt(i, j);
   if (o === 0) return 1;
   if (o > 0) { const b = bById(o); if (walls && b && b.type === 'wall') return 9; return Infinity; }
@@ -162,7 +165,7 @@ function rectDist(px, py, b) {
   return Math.hypot(dx, dy);
 }
 // path from tile (si,sj) to any tile within `reach` of rect `r` (or to tile goal gi,gj when r is null)
-function findPath(si, sj, goalFn, hFn, walls, maxN) {
+function findPath(si, sj, goalFn, hFn, walls, maxN, lock) {
   const key = (i, j) => j * GN + i, best = new Map(), heap = new Heap();
   const start = { i: si, j: sj, g: 0, f: hFn(si, sj), p: null };
   heap.push(start); best.set(key(si, sj), 0);
@@ -175,9 +178,9 @@ function findPath(si, sj, goalFn, hFn, walls, maxN) {
       if (!di && !dj) continue;
       const ni = c.i + di, nj = c.j + dj;
       if (!inGrid(ni, nj)) continue;
-      let cost = tileCost(ni, nj, walls);
+      let cost = tileCost(ni, nj, walls, lock);
       if (cost === Infinity) continue;
-      if (di && dj && (tileCost(c.i + di, c.j, walls) === Infinity || tileCost(c.i, c.j + dj, walls) === Infinity)) continue;
+      if (di && dj && (tileCost(c.i + di, c.j, walls, lock) === Infinity || tileCost(c.i, c.j + dj, walls, lock) === Infinity)) continue;
       const g = c.g + cost * (di && dj ? 1.41 : 1);
       const k = key(ni, nj);
       if (best.has(k) && best.get(k) <= g) continue;
@@ -187,18 +190,18 @@ function findPath(si, sj, goalFn, hFn, walls, maxN) {
   }
   return null;
 }
-function pathToBuilding(u, b, reach, walls) {
+function pathToBuilding(u, b, reach, walls) {   // enemies ignore the cloud boundary
   const hf = (i, j) => rectDist(i + 0.5, j + 0.5, b);
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => tileCost(i, j, walls) !== Infinity && rectDist(i + 0.5, j + 0.5, b) <= reach, hf, walls);
+  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => tileCost(i, j, walls) !== Infinity && rectDist(i + 0.5, j + 0.5, b) <= reach, hf, walls, 4500, false);
 }
-function pathToTile(u, gi, gj) {
-  // nearest free tile to the goal if the goal itself is blocked
+function pathToTile(u, gi, gj) {                 // hero / guards stay inside the territory
   const hf = (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj));
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false) || (tileCost(gi, gj, false) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false) !== Infinity, hf, false) : null);
+  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false, 3500, true)
+    || (tileCost(gi, gj, false, true) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true) : null);
 }
 function pathToTree(u, t) {
   const hf = (i, j) => Math.max(Math.abs(i - t.i), Math.abs(j - t.j));
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false) !== Infinity, hf, false);
+  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
 }
 // move a unit along its path; returns true while still travelling
 function followPath(u, dt, speed) {
@@ -259,7 +262,7 @@ function heroStrike() {
 }
 function nearestEnemy(i, j, r, groundOnly) {
   let best = null, bd = r;
-  for (const e of V.enemies) { if (e.dying) continue; const d = Math.hypot(e.i - i, e.j - j); if (d < bd) { bd = d; best = e; } }
+  for (const e of V.enemies) { if (e.dying || !Terr.has(e.i, e.j)) continue; /* enemies hidden in the clouds are out of reach */ const d = Math.hypot(e.i - i, e.j - j); if (d < bd) { bd = d; best = e; } }
   return best;
 }
 function updateHero(dt) {
@@ -388,7 +391,7 @@ class Enemy {
     if (this.type === 'necro' || this.type === 'spawn' || this.type === 'king') burst(this.i, this.j, 14, ['#a060ff', '#4fd8ff'], 110, 0.7);
   }
   pickTarget() {
-    const live = V.buildings.filter(b => b.state !== 'ruin' && b.hp > 0 && b.type !== 'wall' && b.type !== 'trap');
+    const live = V.buildings.filter(b => b.state !== 'ruin' && b.hp > 0 && b.type !== 'wall' && b.type !== 'trap' && BDEF[b.type].kind !== 'decor');
     if (!live.length) return null;
     let pool = live;
     const pref = this.d.target;
@@ -522,6 +525,7 @@ function updateDefenses(dt) {
         if (e.dying) continue;
         if (e.flying && !d.air) continue;
         const dd = Math.hypot(e.i - cx, e.j - cy);
+        if (d.minRange && dd < d.minRange) continue;
         if (dd < bd) { bd = dd; tgt = e; }
       }
       if (tgt) {
@@ -531,11 +535,25 @@ function updateDefenses(dt) {
         if (b.cd <= 0) {
           b.cd = d.cd;
           const dmg = d.dmg[b.level - 1];
+          const dd = Math.hypot(tgt.i - cx, tgt.j - cy);
           if (b.type === 'archer') { V.proj.push({ kind: 'arrow', i: cx, j: cy, z: 72, ti: tgt.i, tj: tgt.j, te: tgt, dmg, speed: 13, t: 0 }); Sfx.play('slash'); }
-          else { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i, tj: tgt.j, dmg, splash: d.splash, speed: 7.5, t: 0, d0: Math.hypot(tgt.i - cx, tgt.j - cy) }); Sfx.play('hit'); b.recoil = 0.2; burst(cx + Math.cos(b.aim) * 0.6, cy + Math.sin(b.aim) * 0.6, 6, ['#ddd', '#999'], 40, 0.5); }
+          else if (b.type === 'magetower') { V.proj.push({ kind: 'bolt', i: cx, j: cy, z: 84, ti: tgt.i, tj: tgt.j, te: tgt, dmg, splash: d.splash, speed: 9, t: 0, air: true }); Sfx.play('cast'); b.recoil = 0.25; }
+          else if (b.type === 'mortar') { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i + (tgt.vx || 0), tj: tgt.j, dmg, splash: d.splash, speed: 4.6, t: 0, d0: dd, arc: 70 }); Sfx.play('break'); b.recoil = 0.3; burst(cx + Math.cos(b.aim) * 0.5, cy + Math.sin(b.aim) * 0.5, 10, ['#ddd', '#999', '#ffcf70'], 60, 0.6, 30); }
+          else { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i, tj: tgt.j, dmg, splash: d.splash, speed: 7.5, t: 0, d0: dd, arc: 28 }); Sfx.play('hit'); b.recoil = 0.2; burst(cx + Math.cos(b.aim) * 0.6, cy + Math.sin(b.aim) * 0.6, 6, ['#ddd', '#999'], 40, 0.5); }
         }
       }
       b.recoil = Math.max(0, (b.recoil || 0) - dt);
+    } else if (d.kind === 'shrine') {
+      b.pulse = (b.pulse || 0) - dt;
+      if (V.raid.active || V.enemies.length || V.hero && V.hero.hp < V.hero.maxHp) {
+        const cx = b.i + b.w / 2, cy = b.j + b.d / 2, rad = d.radius, hu = d.heal[b.level - 1] * dt, bu = d.mend[b.level - 1] * dt;
+        let healed = false;
+        const h = V.hero;
+        if (h && !h.dead && Math.hypot(h.i - cx, h.j - cy) <= rad && h.hp < h.maxHp) { h.hp = Math.min(h.maxHp, h.hp + hu); healed = true; }
+        for (const g of V.guards) if (Math.hypot(g.i - cx, g.j - cy) <= rad && g.hp < g.maxHp) { g.hp = Math.min(g.maxHp, g.hp + hu); healed = true; }
+        for (const o of V.buildings) if (o.state === 'built' && o.hp < o.maxHp && Math.hypot(o.i + o.w / 2 - cx, o.j + o.d / 2 - cy) <= rad) { o.hp = Math.min(o.maxHp, o.hp + bu); healed = true; }
+        if (healed && b.pulse <= 0) { b.pulse = 0.9; V.rings.push({ i: cx, j: cy, r: 0.4, max: rad * 0.9, t: 0, green: true }); }
+      }
     } else if (d.kind === 'trap' && b.armed) {
       for (const e of V.enemies) {
         if (e.dying || e.flying) continue;
@@ -559,6 +577,11 @@ function updateProjectiles(dt) {
     if (d <= step + 0.1) {
       p.dead = true;
       if (p.kind === 'arrow') { if (p.te && !p.te.dying) { p.te.hurt(p.dmg, 'tower'); Sfx.play('hit'); } }
+      else if (p.kind === 'bolt') {
+        burst(p.ti, p.tj, 14, ['#9ad0ff', '#d6f0ff', '#7a7aff'], 110, 0.5, 20); V.rings.push({ i: p.ti, j: p.tj, r: 0.2, max: p.splash, t: 0, blue: true });
+        for (const e of V.enemies) if (!e.dying && Math.hypot(e.i - p.ti, e.j - p.tj) <= p.splash) e.hurt(p.dmg, 'tower');
+        Sfx.play('hit');
+      }
       else if (p.kind === 'ball') {
         burst(p.ti, p.tj, 12, ['#ffcf70', '#ff9a40', '#555'], 120, 0.5, 20); V.rings.push({ i: p.ti, j: p.tj, r: 0.2, max: p.splash, t: 0 });
         for (const e of V.enemies) if (!e.dying && !e.flying && Math.hypot(e.i - p.ti, e.j - p.tj) <= p.splash) e.hurt(p.dmg, 'tower');
@@ -593,7 +616,7 @@ function startRaid() {
   return true;
 }
 function spawnEnemy(type) {
-  const n = V.raid.n, lane = SPAWN_POINTS[V.raid.lanes[Math.floor(Math.random() * V.raid.lanes.length)]];
+  const n = V.raid.n, sp = Terr.spawnPoints(), lane = sp[V.raid.lanes[Math.floor(Math.random() * V.raid.lanes.length)]];
   const hpMul = (1 + 0.1 * (n - 1)) * (EDATA[type].boss ? 1 + 0.4 * (Math.floor(n / 5) - 1) : 1);
   const e = new Enemy(type, lane.i + rnd(-0.8, 0.8), lane.j + rnd(-0.8, 0.8), hpMul);
   e.dmgMul = 1 + 0.05 * (n - 1);
@@ -656,20 +679,45 @@ function newVillage() {
   V.seed = 1 + Math.floor(Math.random() * 1e6);
   Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, paused: false });
   V.raid = { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 };
+  Terr.level = 1;
   Ground.build(V.seed); layoutTrees();
-  const m = Math.floor(MID);
+  const m = MID;
   addBuilding('townhall', m - 1, m - 1);
   addBuilding('archer', m + 3, m + 2);
   addBuilding('archer', m - 4, m - 3);
   addBuilding('goldmine', m + 4, m - 3, { prod: 40 });
   addBuilding('lumbercamp', m - 4, m + 3, { prod: 30 });
+  addBuilding('builderhut', m + 3, m + 6);
   spawnHero();
+  V.cb.expanded(Terr.level, true);
   V.cb.changed();
+}
+// ---------------------------------------------------------------- map expansion
+function expandInfo() { const L = Terr.level; return L >= TERR_R.length ? null : Object.assign({ level: L + 1 }, EXPAND[L]); }
+function expandCheck() {
+  const e = expandInfo();
+  if (!e) return 'The whole island is already yours.';
+  if (hallLevel() < e.th) return `Expanding needs Town Hall level ${e.th}.`;
+  if (V.raid.active) return 'Not during a raid.';
+  if (!canAfford({ gold: e.gold, wood: e.wood })) return 'Not enough resources.';
+  return null;
+}
+function expandMap() {
+  const why = expandCheck();
+  if (why) return why;
+  const e = expandInfo();
+  pay({ gold: e.gold, wood: e.wood });
+  Terr.level = e.level;
+  Sfx.play('dawn'); V.shake = Math.max(V.shake, 6);
+  V.cb.expanded(Terr.level, false);
+  V.cb.banner('The clouds part', `New land revealed: ${Terr.r * 2 + 1} x ${Terr.r * 2 + 1} tiles`);
+  V.cb.changed();
+  return null;
 }
 function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      seed: V.seed, res: V.res, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, kills: V.kills, t: Date.now(),
+      seed: V.seed, res: V.res, terr: Terr.level, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, kills: V.kills, t: Date.now(),
       removed: V.trees.filter(t => !t.alive).map(t => [t.i, t.j]),
       b: V.buildings.map(b => ({ type: b.type, i: b.i, j: b.j, level: b.level, state: b.state, hp: b.hp, buildT: b.buildT, buildTotal: b.buildTotal, up: b.up, prod: b.prod })),
     }));
@@ -681,6 +729,7 @@ function loadGame() {
   if (!s || !s.b || !s.b.some(b => b.type === 'townhall' && b.state !== 'ruin')) return false;
   Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, paused: false, seed: s.seed });
   V.raid = { n: s.raid || 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: s.best || 0 };
+  Terr.level = clamp(s.terr || 1, 1, TERR_R.length);
   Ground.build(V.seed); layoutTrees(s.removed);
   const away = clamp((Date.now() - (s.t || Date.now())) / 1000, 0, 1800);
   for (const o of s.b) {
@@ -691,6 +740,7 @@ function loadGame() {
     if (b.state === 'built') b.hp = b.maxHp;
   }
   spawnHero();
+  V.cb.expanded(Terr.level, true);
   if (away > 60) toast(`Welcome back. Your collectors worked while you were away.`);
   V.cb.changed();
   return true;

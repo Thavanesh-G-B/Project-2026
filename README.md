@@ -6,14 +6,19 @@ Two games share this project: a side-scrolling **survival platformer** (`index.h
 
 An isometric island village in the spirit of Clash of Clans. Gather resources, build and upgrade, then defend against escalating undead raids with your hero, towers, walls, traps and trained guards.
 
+- **Clouds and expansion**: the island is 61 x 61 tiles, but you start with a 25 x 25 territory. Everything else (and the void around the island) is hidden by clouds, and you cannot build on or walk into it. *Expand map* (`E`) pays gold and wood, needs a higher Town Hall, and makes the clouds part to reveal the next ring of land (25 -> 35 -> 47 -> 61). Raids start just inside the cloud bank, so enemies emerge from the clouds.
 - **Collectors**: Gold Mines and Lumber Camps fill up over time (even while you are away, up to 30 minutes at half rate). Tap the floating coin or log bubble to collect before they are full.
-- **Build**: open the *Village shop* (`3`), pick a building and click an empty tile. Builders (Town Hall level + 1) work in parallel on construction and upgrades; walls can be dragged out in a line. Everything is capped by the Town Hall level, and storage is limited until you build Storage Vaults.
-- **Defenses**: Archer Towers (hit ground and air), Cannons (splash, ground only), Walls (enemies must break through or walk around), Spike Traps, and Barracks that train guards wearing Iron / Gold / Crystal armor by level.
-- **Raids**: *Start raid N* sends zombies, skeletons, necromancers and necro-spawn from the island lanes. Skeletons and the Cursed Knight (raid 5, 15, ...) hunt your defenses, the flying Necromancer King (raid 10, 20, ...) goes for the Town Hall. Lose the Town Hall and the village falls; other destroyed buildings become ruins you can rebuild at half price.
-- **Hero**: left-click inspects and collects, right-click commands (move, attack an enemy, chop a tree). `Space` is *Hero strike*, a shockwave on an 8 s cooldown. The idle hero hunts enemies on its own during raids. It levels up with kills and respawns at the Town Hall if it falls.
-- Camera: drag to pan, wheel to zoom, *Follow hero*, *Village* (recentre), *World map* (jump anywhere). Progress is saved in the browser automatically.
+- **Build**: use the **quick-build bar** on the map (one click per building, with costs on hover) or the **Village shop** (`3`), which has Economy / Defense / Utility / Decor tabs. Then click an empty tile. Builders work in parallel on construction and upgrades; walls can be dragged out in a line. Limits and levels depend on the Town Hall level.
+  - Economy: Gold Mine, Lumber Camp, Storage Vault
+  - Defense: Archer Tower (ground + air), Cannon (splash, ground), Mortar (long range splash, blind up close), Mage Tower (crystal bolts, ground + air), Wall, Spike Trap
+  - Utility: Barracks (guards in iron / gold / crystal armor), Healing Shrine (heals units, mends buildings), Builder's Hut (+1 builder each)
+  - Decor: Lantern Post, Flower Garden, Fountain
+- **Raids**: *Start raid N* sends zombies, skeletons, necromancers and necro-spawn from the four lanes. Skeletons and the Cursed Knight (raid 5, 15, ...) hunt your defenses, the flying Necromancer King (raid 10, 20, ...) goes for the Town Hall. Lose the Town Hall and the village falls; other destroyed buildings become ruins you can rebuild at half price.
+- **Hero**: left-click inspects and collects, right-click commands (move, attack an enemy, chop a tree). `Space` is *Hero strike*, a shockwave on an 8 s cooldown. The idle hero hunts enemies on its own during raids. It levels up with kills and respawns at the Town Hall if it falls. Walking up or down the screen uses dedicated front and back walk animations, and units are depth-sorted so a hero standing in front of a building is drawn in front of it.
+- **Look**: per-pixel meadow, forest floor and dirt lanes with ruts and shoulders, tufts, flowers and stones; layered cliffs; five broadleaf species (oak, lime, olive, autumn, birch) and spruce with lit leaf clusters, barked trunks and soft shadows.
+- Camera: drag to pan (limited to your territory), wheel to zoom, *Follow hero*, *Village* (recentre), *World map* (jump anywhere). Progress is saved in the browser automatically.
 
-Keys: `1` move/inspect, `2` gather tree, `3` shop, `R` start raid, `Space` strike, `F` follow, `M` map, `P` pause, `Esc` cancel.
+Keys: `1` move/inspect, `2` gather tree, `3` shop, `E` expand map, `R` start raid, `Space` strike, `F` follow, `M` map, `P` pause, `Esc` cancel.
 
 ---
 
@@ -68,7 +73,7 @@ Surface undead burn in sunlight at dawn, so a shelter of blocks will get you thr
 index.html            page shell
 js/assets.js          sprite atlas access
 js/sfx.js             shared audio
-js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), sim, render, ui
+js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), clouds, sim, render, ui
 village.html          village mode page
 js/world.js           tiles + world generation
 js/tiles.js           block textures and edge lighting

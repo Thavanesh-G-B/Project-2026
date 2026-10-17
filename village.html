@@ -59,6 +59,15 @@
   .sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: 900px; width: 100%; max-height: 92vh; overflow: auto; padding: 18px 20px; }
   .sheet h2 { margin: 0; font: 600 13px var(--mono); letter-spacing: 3px; text-transform: uppercase; }
   .sheet .hd { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; } .sheet .hd .sub { font: 12px var(--mono); color: var(--mute); flex: 1; }
+  #shopTabs { display: flex; gap: 8px; margin: -4px 0 12px; flex-wrap: wrap; }
+  #shopTabs button { background: #1d363c; border: 1px solid var(--line); border-radius: 8px; padding: 6px 14px; font: 12px var(--mono); letter-spacing: 1px; text-transform: uppercase; }
+  #shopTabs button.on { background: #c7a65f; color: #1d1a10; border-color: #e6c677; font-weight: 600; }
+  #qbar { position: absolute; left: 14px; bottom: 54px; display: flex; gap: 6px; max-width: calc(100% - 28px); overflow-x: auto; padding: 6px; background: rgba(18,34,40,.88); border: 1px solid var(--line); border-radius: 10px; }
+  #qbar button { position: relative; width: 52px; height: 52px; flex: none; padding: 0; background: #1f3a40; border: 1px solid var(--line); border-radius: 8px; }
+  #qbar button:hover { border-color: var(--gold); } #qbar button.off { opacity: .4; } #qbar button.on { border-color: var(--gold); background: #38503e; }
+  #qbar canvas { width: 100%; height: 100%; display: block; border-radius: 7px; } #qbar small { position: absolute; bottom: 1px; left: 0; right: 0; text-align: center; font: 9px var(--mono); color: #e6c677; text-shadow: 0 1px 2px #000; }
+  #qbar .tip { display: none; position: absolute; bottom: 58px; left: 0; background: #0f1d23; border: 1px solid var(--gold-d); border-radius: 6px; padding: 5px 8px; font: 11px var(--mono); white-space: nowrap; z-index: 5; }
+  #qbar button:hover .tip { display: block; }
   #shopGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
   .card-b { display: flex; gap: 10px; text-align: left; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   .card-b:hover { border-color: var(--gold); } .card-b.full { opacity: .45; } .card-b.poor .row .cost { opacity: .9; }
@@ -96,6 +105,7 @@
       <div class="chip" id="chipState">Peaceful preparation</div>
       <div class="chip" id="chipHp">Hall 0 · Hero 0</div>
       <div class="chip" id="mapInfo"></div>
+      <div id="qbar" title="Quick build"></div>
       <div class="zoom">
         <button id="bMinus" title="Zoom out">−</button><button id="bVillage">Village</button><button id="bFollow">Follow hero</button><button id="bMap">World map</button><button id="bPlus" title="Zoom in">+</button>
       </div>
@@ -104,6 +114,7 @@
       <button id="tMove" class="active"><span>↗ Move / inspect</span></button>
       <button id="tGather"><span>⌾ Gather tree</span></button>
       <button id="tShop" class="pri"><span>◉ Village shop</span></button>
+      <button id="tExpand"><span>☁ Expand map</span></button>
       <button id="tStrike"><span>Hero strike</span></button>
       <button id="tRaid" class="pri">Start raid 1</button>
     </div>
@@ -114,6 +125,7 @@
 
 <div class="modal" id="shop"><div class="sheet">
   <div class="hd"><h2>Village shop</h2><span class="sub" id="shopRes"></span><button class="tiny" id="shopClose">Close</button></div>
+  <div id="shopTabs"></div>
   <div id="shopGrid"></div>
 </div></div>
 <div class="modal" id="worldmap"><div class="sheet">
@@ -135,6 +147,7 @@
 <script src="js/village/core.js"></script>
 <script src="js/village/data.js"></script>
 <script src="js/village/art.js"></script>
+<script src="js/village/clouds.js"></script>
 <script src="js/village/sim.js"></script>
 <script src="js/village/render.js"></script>
 <script src="js/village/ui.js"></script>

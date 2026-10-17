@@ -1,28 +1,42 @@
 'use strict';
 // Village mode, part 2: building and enemy data. Level arrays are indexed by level - 1 (levels 1-3).
 const BDEF = {
-  townhall: { name: 'Town Hall', w: 3, d: 3, kind: 'core', desc: 'The heart of your village. If it falls, the village falls. Upgrading unlocks more buildings and levels.',
+  townhall: { cat: 'core', name: 'Town Hall', w: 3, d: 3, kind: 'core', desc: 'The heart of your village. If it falls, the village falls. Upgrading unlocks more buildings and levels.',
     hp: [1500, 2400, 3600], cap: [500, 800, 1200], cost: [null, { gold: 400, wood: 300 }, { gold: 900, wood: 700 }], time: [0, 25, 45], max: [1, 1, 1] },
-  goldmine: { name: 'Gold Mine', w: 2, d: 2, kind: 'collector', res: 'gold', desc: 'Digs gold over time. Tap it to collect before it fills up.',
+  goldmine: { cat: 'Economy', name: 'Gold Mine', w: 2, d: 2, kind: 'collector', res: 'gold', desc: 'Digs gold over time. Tap it to collect before it fills up.',
     hp: [350, 520, 760], rate: [0.9, 1.5, 2.3], store: [260, 480, 800],
     cost: [{ wood: 80, gold: 40 }, { gold: 150, wood: 100 }, { gold: 420, wood: 260 }], time: [8, 20, 40], max: [2, 3, 4] },
-  lumbercamp: { name: 'Lumber Camp', w: 2, d: 2, kind: 'collector', res: 'wood', desc: 'Lumberjacks haul wood in. Tap it to collect.',
+  lumbercamp: { cat: 'Economy', name: 'Lumber Camp', w: 2, d: 2, kind: 'collector', res: 'wood', desc: 'Lumberjacks haul wood in. Tap it to collect.',
     hp: [300, 440, 640], rate: [0.7, 1.2, 1.8], store: [200, 360, 600],
     cost: [{ gold: 70 }, { gold: 140, wood: 60 }, { gold: 380, wood: 140 }], time: [6, 16, 34], max: [2, 3, 4] },
-  storage: { name: 'Storage Vault', w: 2, d: 2, kind: 'storage', desc: 'Raises how much gold and wood your village can hold.',
+  storage: { cat: 'Economy', name: 'Storage Vault', w: 2, d: 2, kind: 'storage', desc: 'Raises how much gold and wood your village can hold.',
     hp: [500, 800, 1200], cap: [400, 800, 1400], cost: [{ gold: 120, wood: 120 }, { gold: 300, wood: 220 }, { gold: 700, wood: 480 }], time: [8, 20, 38], max: [1, 2, 3] },
-  archer: { name: 'Archer Tower', w: 2, d: 2, kind: 'defense', air: true, ground: true, desc: 'Fast arrows. Hits ground and flying enemies.',
+  archer: { cat: 'Defense', name: 'Archer Tower', w: 2, d: 2, kind: 'defense', air: true, ground: true, desc: 'Fast arrows. Hits ground and flying enemies.',
     hp: [320, 480, 700], dmg: [9, 14, 22], range: 6.5, cd: 0.85, cost: [{ gold: 150, wood: 60 }, { gold: 300, wood: 100 }, { gold: 720, wood: 220 }], time: [10, 24, 44], max: [2, 4, 6] },
-  cannon: { name: 'Cannon', w: 2, d: 2, kind: 'defense', ground: true, desc: 'Heavy splash damage. Cannot hit flying enemies.',
+  cannon: { cat: 'Defense', name: 'Cannon', w: 2, d: 2, kind: 'defense', ground: true, desc: 'Heavy splash damage. Cannot hit flying enemies.',
     hp: [420, 640, 900], dmg: [30, 48, 74], range: 5.5, cd: 1.7, splash: 1.1, cost: [{ gold: 240, wood: 90 }, { gold: 480, wood: 160 }, { gold: 980, wood: 340 }], time: [14, 28, 50], max: [1, 3, 5] },
-  trap: { name: 'Spike Trap', w: 1, d: 1, kind: 'trap', desc: 'Hidden spikes. Bursts when ground enemies step on it, then re-arms after the raid.',
+  trap: { cat: 'Defense', name: 'Spike Trap', w: 1, d: 1, kind: 'trap', desc: 'Hidden spikes. Bursts when ground enemies step on it, then re-arms after the raid.',
     hp: [100, 100, 100], dmg: [90, 160, 260], cost: [{ gold: 60 }, { gold: 160 }, { gold: 380 }], time: [3, 8, 14], max: [2, 4, 6] },
-  wall: { name: 'Wall', w: 1, d: 1, kind: 'wall', desc: 'Blocks ground enemies, who must break through or walk around. Drag to build a line.',
+  wall: { cat: 'Defense', name: 'Wall', w: 1, d: 1, kind: 'wall', desc: 'Blocks ground enemies, who must break through or walk around. Drag to build a line.',
     hp: [350, 600, 950], cost: [{ wood: 14 }, { wood: 40, gold: 30 }, { wood: 90, gold: 90 }], time: [1, 3, 5], max: [25, 50, 80] },
-  barracks: { name: 'Barracks', w: 2, d: 2, kind: 'barracks', desc: 'Trains guards who defend the village. They re-train after falling.',
+  barracks: { cat: 'Utility', name: 'Barracks', w: 2, d: 2, kind: 'barracks', desc: 'Trains guards who defend the village. They re-train after falling.',
     hp: [450, 700, 1000], guards: [2, 3, 4], ghp: [110, 160, 220], gdmg: [8, 12, 18], cost: [{ gold: 200, wood: 120 }, { gold: 450, wood: 200 }, { gold: 900, wood: 400 }], time: [12, 26, 46], max: [1, 2, 3] },
+  mortar: { cat: 'Defense', name: 'Mortar', w: 2, d: 2, kind: 'defense', ground: true, desc: 'Long-range siege tube. Huge splash, slow, and blind up close.',
+    hp: [380, 560, 800], dmg: [46, 78, 120], range: 8.6, minRange: 2.2, cd: 3.3, splash: 1.5, cost: [{ gold: 360, wood: 140 }, { gold: 720, wood: 260 }, { gold: 1500, wood: 520 }], time: [18, 34, 60], max: [0, 1, 2] },
+  magetower: { cat: 'Defense', name: 'Mage Tower', w: 2, d: 2, kind: 'defense', air: true, ground: true, desc: 'Crystal-powered bolts that burst on impact. Hits air and ground.',
+    hp: [300, 450, 650], dmg: [15, 24, 36], range: 6, cd: 1.15, splash: 0.9, cost: [{ gold: 300, wood: 100 }, { gold: 620, wood: 200 }, { gold: 1200, wood: 420 }], time: [16, 30, 52], max: [0, 1, 2] },
+  shrine: { cat: 'Utility', name: 'Healing Shrine', w: 2, d: 2, kind: 'shrine', desc: 'Heals your hero and guards, and mends nearby buildings during raids.',
+    hp: [350, 520, 760], heal: [6, 10, 16], mend: [2, 4, 7], radius: 6.2, cost: [{ gold: 220, wood: 140 }, { gold: 500, wood: 260 }, { gold: 1000, wood: 500 }], time: [12, 26, 46], max: [0, 1, 2] },
+  builderhut: { cat: 'Utility', name: "Builder's Hut", w: 2, d: 2, kind: 'hut', maxLevel: 1, desc: 'Each hut gives you one more builder, so more things can be built at once.',
+    hp: [300, 300, 300], cost: [{ gold: 80, wood: 120 }], time: [6], max: [1, 2, 3] },
+  lantern: { cat: 'Decor', name: 'Lantern Post', w: 1, d: 1, kind: 'decor', maxLevel: 1, desc: 'A warm light for the paths.', hp: [80, 80, 80], cost: [{ wood: 8 }], time: [1], max: [6, 10, 16] },
+  garden: { cat: 'Decor', name: 'Flower Garden', w: 2, d: 2, kind: 'decor', maxLevel: 1, desc: 'Blossoming beds to brighten the village.', hp: [120, 120, 120], cost: [{ gold: 25, wood: 18 }], time: [2], max: [2, 4, 6] },
+  fountain: { cat: 'Decor', name: 'Fountain', w: 2, d: 2, kind: 'decor', maxLevel: 1, desc: 'A stone fountain for the village green.', hp: [200, 200, 200], cost: [{ gold: 140, wood: 50 }], time: [3], max: [1, 1, 2] },
 };
-const SHOP_ORDER = ['goldmine', 'lumbercamp', 'storage', 'archer', 'cannon', 'wall', 'trap', 'barracks'];
+const SHOP_CATS = ['Economy', 'Defense', 'Utility', 'Decor'];
+const SHOP_ORDER = ['goldmine', 'lumbercamp', 'storage', 'archer', 'cannon', 'mortar', 'magetower', 'wall', 'trap', 'barracks', 'shrine', 'builderhut', 'lantern', 'garden', 'fountain'];
+// map expansion: level 2..4 pushes the clouds back. Needs the given Town Hall level.
+const EXPAND = [null, { gold: 250, wood: 150, th: 1 }, { gold: 700, wood: 450, th: 2 }, { gold: 1500, wood: 1000, th: 3 }];
 
 // Enemy templates. speed in tiles/s; scale = sprite scale on the isometric map.
 const EDATA = {

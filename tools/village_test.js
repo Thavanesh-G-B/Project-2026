@@ -17,11 +17,13 @@ const out = process.argv[2] || '/tmp';
 
   // --- shop -> place an archer tower with the mouse
   await page.click('#tShop'); await page.waitForTimeout(200); await shot('v2_shop');
-  const cards = await page.$$('#shopGrid .card-b'); console.log('shop cards', cards.length);
-  await cards[4].click();                       // cannon (the starting archers already fill the archer limit)
+  const econ = await page.$$('#shopGrid .card-b'); console.log('economy cards', econ.length);
+  await (await page.$$('#shopTabs button'))[1].click();
+  const cards = await page.$$('#shopGrid .card-b'); console.log('defense cards', cards.length);
+  await cards[1].click();                       // cannon (the starting archers already fill the archer limit)
   const before = await page.evaluate(() => ({ n: V.buildings.length, gold: V.res.gold, tool: UI.tool, placing: UI.place && UI.place.type }));
   // aim at a free clearing tile left of the hall
-  const pt = await page.evaluate(() => { const i = 28, j = 22; const r = document.getElementById('v').getBoundingClientRect();
+  const pt = await page.evaluate(() => { const i = MID + 6, j = MID + 1; const r = document.getElementById('v').getBoundingClientRect();
     return { x: r.left + (isoX(i + 1, j + 1) - UI.cam.x) * UI.cam.zoom + UI.W / 2, y: r.top + (isoY(i + 1, j + 1) - UI.cam.y) * UI.cam.zoom + UI.H / 2 }; });
   await page.mouse.move(pt.x, pt.y); await page.waitForTimeout(150); await shot('v3_ghost');
   await page.mouse.click(pt.x, pt.y);
@@ -32,7 +34,7 @@ const out = process.argv[2] || '/tmp';
   console.log('after build', await page.evaluate(() => JSON.stringify({ busy: busyBuilders(), last: V.buildings[V.buildings.length - 1].state })));
 
   // --- collect from the gold mine by clicking its bubble
-  await page.evaluate(() => { V.buildings.find(b => b.type === 'goldmine').prod = 120; centerOn(MID + 5, MID + 4); });
+  await page.evaluate(() => { V.buildings.find(b => b.type === 'goldmine').prod = 120; centerOn(MID + 5, MID - 2); });
   await page.waitForTimeout(150);
   const gold0 = await page.evaluate(() => V.res.gold);
   const bub = await page.evaluate(() => { const b = V.buildings.find(b => b.type === 'goldmine'); const r = document.getElementById('v').getBoundingClientRect();
@@ -54,6 +56,26 @@ const out = process.argv[2] || '/tmp';
   const mid = await page.evaluate(() => ({ active: V.raid.active, enemies: V.enemies.length, kills: V.kills }));
   await page.evaluate(() => { for (let k = 0; k < 2400 && V.raid.active; k++) step(1 / 30); });
   console.log('raid mid', JSON.stringify(mid), 'end', await page.evaluate(() => JSON.stringify({ active: V.raid.active, n: V.raid.n, hall: V.buildings.find(b => b.type === 'townhall').hp, state: V.state, kills: V.kills })));
+
+  // --- map expansion through the real button + clouds
+  await page.evaluate(() => { V.res.gold = 2000; V.res.wood = 2000; });
+  const ex0 = await page.evaluate(() => ({ r: Terr.r, hidden: !Terr.has(MID + 15, MID), puffs: Clouds.puffs.length }));
+  await page.click('#tExpand'); await page.waitForTimeout(300);
+  const ex1 = await page.evaluate(() => ({ r: Terr.r, open: Terr.has(MID + 15, MID), gold: Math.round(V.res.gold), clearing: Clouds.puffs.filter(p => p.clear >= 0).length }));
+  console.log('expand', JSON.stringify(ex0), '->', JSON.stringify(ex1));
+  const blocked = await page.evaluate(() => placeCheck('archer', MID + 25, MID));
+  console.log('placing in clouds is refused:', blocked);
+  await page.waitForTimeout(3000); await shot('v5b_expanded');
+  // --- new buildings via the quick-build bar and the shop tabs
+  const qb = await page.$$('#qbar button'); console.log('quick bar buttons', qb.length);
+  await page.evaluate(() => { V.buildings.find(b => b.type === 'townhall').level = 3; V.res.gold = 3000; V.res.wood = 3000; V.buildings.forEach(b => { if (b.state === 'building') b.buildT = 0; }); V.cb.changed(); });
+  await page.click('#tShop'); const tabs = await page.$$('#shopTabs button'); console.log('shop tabs', tabs.length);
+  await tabs[1].click(); const defCards = await page.$$('#shopGrid .card-b'); console.log('defense cards', defCards.length);
+  await page.keyboard.press('Escape');
+  // --- hero depth: standing in front of the Hall must draw after it
+  const depth = await page.evaluate(() => { const h = hallCenter(); const hall = V.buildings.find(b => b.type === 'townhall'); V.hero.i = hall.i + 1.5; V.hero.j = hall.j + hall.d + 0.7; const hk = unitDepth(V.hero.i, V.hero.j), bk = hall.i + hall.j + hall.w + hall.d - 0.2; return { hero: +hk.toFixed(2), hall: +bk.toFixed(2), inFront: hk > bk };
+  });
+  console.log('hero in front of hall:', JSON.stringify(depth));
 
   // --- world map + save/load round trip
   await page.click('#bMap'); await page.waitForTimeout(250); await shot('v5_map'); await page.keyboard.press('Escape');

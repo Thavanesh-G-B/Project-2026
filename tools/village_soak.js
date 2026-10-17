@@ -33,8 +33,8 @@ const path = require('path');
         const hc = h.level < 3 ? BDEF.townhall.cost[h.level] : null;
         const saving = hc && V.raid.n >= 2 && countOf('archer') >= 2 && (V.res.gold < hc.gold + 60 || V.res.wood < hc.wood + 40);
         if (saving) break;
-        for (const type of ['archer', 'cannon', 'barracks', 'storage', 'trap', 'goldmine', 'lumbercamp']) {
-          if (countOf(type) < maxCount(type) && !placeCheck(type, -99, -99) !== undefined) { const sp = freeSpot(type); if (sp && !buildNew(type, sp[0], sp[1])) { did = true; } }
+        for (const type of ['archer', 'cannon', 'magetower', 'mortar', 'barracks', 'shrine', 'storage', 'trap', 'goldmine', 'lumbercamp', 'builderhut']) {
+          if (countOf(type) < maxCount(type)) { const sp = freeSpot(type); if (sp && !buildNew(type, sp[0], sp[1])) { did = true; } }
         }
         for (const b of V.buildings) if (b.state === 'built' && b.type !== 'wall' && !upgradeCheck(b)) { upgradeBuilding(b); did = true; }
         if (!did) break;

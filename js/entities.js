@@ -412,7 +412,7 @@ class Player {
     else if (this.atkT >= 0) {
       let acc = 0, idx = 0; for (; idx < SLASH_DUR.length - 1; idx++) { acc += SLASH_DUR[idx]; if (this.atkT < acc) break; }
       g = 'p_slash'; i = SLASH_SEQ[idx];
-    } else if (!this.onGround) { g = 'p_walk'; i = this.vy < 0 ? 3 : 5; }
+    } else if (!this.onGround) { g = 'p_walk'; i = (this.vy < 0 ? 2 : 4) + Math.floor(this.anim * 9) % 2; }   // rising / falling stride cycles
     else if (Math.abs(this.vx) > 20) { g = 'p_walk'; i = Math.floor(this.walkT * 9); }
     else { g = 'p_walk'; i = 0; }
     const breathe = this.onGround && !this.dead && g === 'p_walk' && i === 0 ? 1 + Math.sin(this.anim * 3) * 0.012 : 1;

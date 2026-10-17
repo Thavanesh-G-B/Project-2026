@@ -109,11 +109,11 @@ const BART = {
   },
   make(type, L, mask) {
     const def = BDEF[type] || { w: 2, d: 2 };
-    const up = type === 'townhall' ? 150 : type === 'archer' ? 130 : 96;
+    const up = type === 'townhall' ? 150 : (type === 'archer' || type === 'magetower') ? 130 : 96;
     const { c, g, ox, oy } = this.canvasFor(def.w, def.d, up);
     const out = { canvas: c, ox, oy };
     const trim = TRIM[L - 1], rc = ROOFC[L - 1];
-    if (type !== 'wall' && type !== 'trap') this.shadow(g, def.w, def.d);
+    if (type !== 'wall' && type !== 'trap' && type !== 'garden' && type !== 'lantern') this.shadow(g, def.w, def.d);
     switch (type) {
       case 'townhall': {
         cuboid(g, -1.5, -1.5, 1.5, 1.5, 0, 8, STONE_D, { l: stoneTex(STONE_D, 1), r: stoneTex(STONE_D, 2) });
@@ -222,6 +222,96 @@ const BART = {
         const top = P(0, 0, 3);
         g.fillStyle = '#b9bcc0';
         for (const [a, b] of [[-0.2, -0.2], [0.2, -0.2], [0, 0], [-0.2, 0.2], [0.2, 0.2]]) { const p = P(a, b, 3); g.beginPath(); g.moveTo(p.x - 3, p.y); g.lineTo(p.x, p.y - 7); g.lineTo(p.x + 3, p.y); g.closePath(); g.fill(); }
+        break;
+      }
+      case 'mortar': {
+        cuboid(g, -0.85, -0.85, 0.85, 0.85, 0, 12, STONE, { l: stoneTex(STONE, 70), r: stoneTex(STONE, 71) });
+        // sunken firing pit with sandbags
+        poly(g, [P(-0.62, -0.62, 12), P(0.62, -0.62, 12), P(0.62, 0.62, 12), P(-0.62, 0.62, 12)], '#2e2a26');
+        for (const [a, b] of [[-0.62, -0.1], [-0.1, -0.62], [0.52, 0.3], [0.3, 0.52]]) { const p0 = P(a, b, 14); g.fillStyle = '#b8a272'; g.beginPath(); g.ellipse(p0.x, p0.y, 7, 4, 0, 0, 6.283); g.fill(); g.strokeStyle = '#6a5a38'; g.lineWidth = 1; g.stroke(); }
+        g.fillStyle = shade(trim, 1); g.fillRect(-16, P(0, 0.85, 8).y + 4, 32, 2);
+        out.turret = { x: 0, y: P(0, 0, 18).y };
+        break;
+      }
+      case 'magetower': {
+        cuboid(g, -0.8, -0.8, 0.8, 0.8, 0, 8, STONE_D, { l: stoneTex(STONE_D, 72), r: stoneTex(STONE_D, 73) });
+        const cr = L === 1 ? [90, 130, 210] : L === 2 ? [100, 190, 230] : [180, 120, 230];
+        cuboid(g, -0.5, -0.5, 0.5, 0.5, 8, 64, [112, 118, 140], { l: stoneTex([112, 118, 140], 74), r: stoneTex([112, 118, 140], 75) }, {
+          l: (c2, w, h) => { c2.fillStyle = shade(cr, 1.1); c2.fillRect(0, 16, w, 3); c2.fillRect(0, h - 22, w, 3); arch(c2, w * 0.36, h - 18, 8, 18, '#161826'); c2.fillStyle = shade(cr, 1.3); c2.fillRect(w * 0.45, 28, 2.5, 8); },
+          r: (c2, w, h) => { c2.fillStyle = shade(cr, 0.9); c2.fillRect(0, 16, w, 3); c2.fillRect(0, h - 22, w, 3); c2.fillStyle = shade(cr, 1.2); c2.fillRect(w * 0.45, 28, 2.5, 8); },
+        });
+        cuboid(g, -0.66, -0.66, 0.66, 0.66, 64, 70, [86, 92, 118], null);
+        const tp = P(0, 0, 70);
+        // floating crystal with a soft halo
+        const halo = g.createRadialGradient(tp.x, tp.y - 24, 2, tp.x, tp.y - 24, 34); halo.addColorStop(0, `rgba(${cr[0]},${cr[1]},${cr[2]},.8)`); halo.addColorStop(1, `rgba(${cr[0]},${cr[1]},${cr[2]},0)`);
+        g.fillStyle = halo; g.beginPath(); g.arc(tp.x, tp.y - 24, 34, 0, 6.283); g.fill();
+        const f = SPRITES.world['i_crystals'], sc = 34 / Math.max(f[2], f[3]);
+        g.drawImage(Assets.world, f[0], f[1], f[2], f[3], tp.x - f[2] * sc / 2, tp.y - 24 - f[3] * sc / 2, f[2] * sc, f[3] * sc);
+        out.glow = { x: tp.x, y: tp.y - 24, color: cr };
+        break;
+      }
+      case 'shrine': {
+        cuboid(g, -0.95, -0.95, 0.95, 0.95, 0, 5, [186, 180, 164], { l: stoneTex([186, 180, 164], 76), r: stoneTex([186, 180, 164], 77) });
+        cuboid(g, -0.72, -0.72, 0.72, 0.72, 5, 10, [200, 194, 176], { l: stoneTex([200, 194, 176], 78), r: stoneTex([200, 194, 176], 79) });
+        cuboid(g, -0.26, -0.26, 0.26, 0.26, 10, 48, [214, 208, 190], { l: stoneTex([214, 208, 190], 80), r: stoneTex([214, 208, 190], 81) }, {
+          l: (c2, w, h) => { c2.fillStyle = shade(trim, 1.05); c2.fillRect(0, 6, w, 3); c2.fillRect(0, h - 10, w, 3); },
+          r: (c2, w, h) => { c2.fillStyle = shade(trim, 0.85); c2.fillRect(0, 6, w, 3); c2.fillRect(0, h - 10, w, 3); },
+        });
+        for (const [a, b] of [[-0.78, 0.78], [0.78, -0.78]]) {      // braziers
+          cuboid(g, a - 0.12, b - 0.12, a + 0.12, b + 0.12, 10, 22, [120, 116, 108], null);
+          const q = P(a, b, 26); g.fillStyle = '#ff9a3a'; g.beginPath(); g.moveTo(q.x - 4, q.y + 2); g.quadraticCurveTo(q.x, q.y - 10, q.x + 4, q.y + 2); g.fill();
+        }
+        const tp = P(0, 0, 58), halo = g.createRadialGradient(tp.x, tp.y, 2, tp.x, tp.y, 30); halo.addColorStop(0, 'rgba(150,255,170,.85)'); halo.addColorStop(1, 'rgba(150,255,170,0)');
+        g.fillStyle = halo; g.beginPath(); g.arc(tp.x, tp.y, 30, 0, 6.283); g.fill();
+        g.fillStyle = '#d6ffe0'; g.beginPath(); g.arc(tp.x, tp.y, 7, 0, 6.283); g.fill(); g.fillStyle = '#7cdc96'; g.beginPath(); g.arc(tp.x + 1, tp.y + 1, 5, 0, 6.283); g.fill();
+        g.strokeStyle = shade(trim, 1); g.lineWidth = 2; g.beginPath(); g.ellipse(tp.x, tp.y, 13, 5, 0, 0, 6.283); g.stroke();
+        out.glow = { x: tp.x, y: tp.y, color: [150, 255, 170] };
+        break;
+      }
+      case 'builderhut': {
+        cuboid(g, -0.85, -0.85, 0.85, 0.85, 0, 4, STONE_D, { l: stoneTex(STONE_D, 82), r: stoneTex(STONE_D, 83) });
+        cuboid(g, -0.78, -0.78, 0.78, 0.78, 4, 24, [214, 196, 160], { l: plasterTex([214, 196, 160], 84), r: plasterTex([200, 182, 146], 85) }, {
+          l: (c2, w, h) => { arch(c2, w * 0.4, h - 17, 11, 17, '#3a2818'); windowDeco(w * 0.08, 5, 6, 7, '#f0c860')(c2); c2.fillStyle = '#7a5434'; for (const x of [0, w * 0.33, w * 0.7, w - 2]) c2.fillRect(x, 0, 2, h); c2.fillRect(0, 0, w, 2); },
+          r: (c2, w, h) => { windowDeco(w * 0.3, 5, 7, 8, '#f0c860')(c2); c2.fillStyle = '#7a5434'; for (const x of [0, w * 0.5, w - 2]) c2.fillRect(x, 0, 2, h); c2.fillRect(0, 0, w, 2); },
+        });
+        roof(g, -0.95, -0.95, 0.95, 0.95, 24, 46, [136, 84, 62], '#5a3a28');
+        // chimney, plank pile and hammer sign
+        cuboid(g, 0.3, -0.5, 0.52, -0.28, 36, 52, [128, 120, 110], null);
+        for (let k = 0; k < 4; k++) { g.fillStyle = k % 2 ? '#b98a54' : '#a97a46'; g.fillRect(26, 22 - k * 3, 26, 3); }
+        g.strokeStyle = '#4a3220'; g.lineWidth = 2; g.beginPath(); g.moveTo(-34, 26); g.lineTo(-34, 6); g.stroke(); g.fillStyle = '#c9a070'; g.fillRect(-46, 4, 24, 12); g.fillStyle = '#3a2818'; g.fillRect(-38, 8, 8, 2); g.fillRect(-35, 8, 2, 6);
+        break;
+      }
+      case 'lantern': {
+        g.fillStyle = '#2e2218'; g.fillRect(-2, -34, 4, 36); g.fillRect(-6, 0, 12, 3);
+        g.fillStyle = '#3a2a1c'; g.fillRect(-7, -45, 14, 3); poly(g, [{ x: -6, y: -42 }, { x: 6, y: -42 }, { x: 5, y: -30 }, { x: -5, y: -30 }], '#ffd36a', '#3a2a1c', 1.2);
+        g.fillStyle = '#fff2b8'; g.beginPath(); g.ellipse(0, -36, 2.4, 4, 0, 0, 6.283); g.fill();
+        g.fillStyle = '#3a2a1c'; g.beginPath(); g.moveTo(-8, -45); g.lineTo(0, -52); g.lineTo(8, -45); g.closePath(); g.fill();
+        out.glow = { x: 0, y: -36, color: [255, 200, 110] };
+        break;
+      }
+      case 'garden': {
+        poly(g, [P(-0.95, -0.95, 0), P(0.95, -0.95, 0), P(0.95, 0.95, 0), P(-0.95, 0.95, 0)], '#4a3a28');
+        poly(g, [P(-0.82, -0.82, 1), P(0.82, -0.82, 1), P(0.82, 0.82, 1), P(-0.82, 0.82, 1)], '#5a4630');
+        const r = mulberry(91), cols = ['#f4f0e0', '#f1d65a', '#c58ad8', '#e8847a', '#9cc4ee', '#f08ab0'];
+        for (let k = 0; k < 46; k++) {
+          const a = (r() - 0.5) * 1.55, b = (r() - 0.5) * 1.55, p0 = P(a, b, 2);
+          g.strokeStyle = '#3f7a3a'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(p0.x, p0.y); g.lineTo(p0.x, p0.y - 6 - r() * 5); g.stroke();
+          g.fillStyle = cols[Math.floor(r() * cols.length)]; g.beginPath(); g.arc(p0.x, p0.y - 8 - r() * 4, 2.3 + r() * 1.2, 0, 6.283); g.fill();
+        }
+        cuboid(g, -0.98, -0.98, 0.98, -0.88, 0, 6, [150, 108, 64], { l: plankTex([150, 108, 64], 92), r: plankTex([120, 84, 50], 93) });
+        cuboid(g, -0.98, -0.98, -0.88, 0.98, 0, 6, [150, 108, 64], { l: plankTex([150, 108, 64], 94), r: plankTex([120, 84, 50], 95) });
+        cuboid(g, 0.88, -0.98, 0.98, 0.98, 0, 6, [150, 108, 64], { l: plankTex([150, 108, 64], 96), r: plankTex([120, 84, 50], 97) });
+        cuboid(g, -0.98, 0.88, 0.98, 0.98, 0, 6, [150, 108, 64], { l: plankTex([150, 108, 64], 98), r: plankTex([120, 84, 50], 99) });
+        break;
+      }
+      case 'fountain': {
+        cuboid(g, -0.9, -0.9, 0.9, 0.9, 0, 12, [190, 186, 172], { l: stoneTex([190, 186, 172], 100), r: stoneTex([190, 186, 172], 101) });
+        poly(g, [P(-0.72, -0.72, 11), P(0.72, -0.72, 11), P(0.72, 0.72, 11), P(-0.72, 0.72, 11)], '#4a9cc4');
+        poly(g, [P(-0.72, -0.72, 11), P(0.72, -0.72, 11), P(0.72, 0.72, 11), P(-0.72, 0.72, 11)], 'rgba(255,255,255,.18)');
+        cuboid(g, -0.14, -0.14, 0.14, 0.14, 11, 34, [200, 196, 182], { l: stoneTex([200, 196, 182], 102), r: stoneTex([200, 196, 182], 103) });
+        cuboid(g, -0.34, -0.34, 0.34, 0.34, 34, 38, [206, 202, 188], null);
+        poly(g, [P(-0.28, -0.28, 38), P(0.28, -0.28, 38), P(0.28, 0.28, 38), P(-0.28, 0.28, 38)], '#6ab4d8');
+        out.spray = { x: 0, y: P(0, 0, 38).y };
         break;
       }
       case 'barracks': {
