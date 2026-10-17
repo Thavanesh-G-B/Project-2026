@@ -4,7 +4,7 @@
 // the sword, axe and death poses face south-east and are mirrored for the other side.
 // Variants: 'hero', armour tiers 'a1'..'a3', and four villager outfits 'v0'..'v3'.
 // how much each facing's legs are re-animated (profile views already have a good stride in the sheet)
-const LEG_AMP = { S: 1, N: 1, SE: 0.9, SW: 0.9, NE: 0.9, NW: 0.9, E: 0, W: 0 };
+const LEG_AMP = { S: 1, N: 1, SE: 0.9, SW: 0.9, NE: 0.9, NW: 0.9, E: 1, W: 1 };
 const Hero = {
   img: {}, ready: false, DIRS: ['S', 'SE', 'E', 'NE', 'N', 'NW', 'W', 'SW'], tmp: null,
   load() {
@@ -37,7 +37,8 @@ const Hero = {
     const idleFrame = (dir) => { let dd = this.DIRS[dir], f = false; if (dd === 'NW') { dd = 'NE'; f = true; } return [`w_${dd}_${(window.HERO_ATLAS.idle || {})[dd] || 0}`, f]; };
     switch (kind) {
       case 'walk': case 'carry': {
-        if (LEG_AMP[this.DIRS[d]] > 0.3) { [name, flip] = idleFrame(d); break; }          // legs are animated in code (drawLegged) from a standing picture
+        if (LEG_AMP[this.DIRS[d]] > 0.3 && this.DIRS[d] !== 'E' && this.DIRS[d] !== 'W') { [name, flip] = idleFrame(d); break; }    // legs are animated in code (drawLegged) from a standing picture
+        // side views: the sheet's own frames give the arm swing and torso; the legs are animated in code underneath (its feet never change stance)
         const n = this.count(this.DIRS[d] === 'NW' ? 'NE' : this.DIRS[d]);
         [name, flip] = walkFrame(d, Math.floor(((o.ph || 0) / 6.2832) * n));
         break; }
@@ -65,7 +66,7 @@ const Hero = {
       const t = this.tmp, g = t.getContext('2d'); g.clearRect(0, 0, 160, 160); g.globalCompositeOperation = 'source-over';
       g.drawImage(img, fx, fy, fw, fh, 80 - ax, 150 - ay, fw, fh); g.globalCompositeOperation = 'source-atop'; g.fillStyle = o.flash; g.fillRect(0, 0, 160, 160);
       ctx.drawImage(t, 0, 0, 160, 160, -80 * s, -150 * s, 160 * s, 160 * s);
-    } else if ((kind === 'walk' || kind === 'carry') && LEG_AMP[this.DIRS[d]]) this.drawLegged(ctx, img, F, s, o, d, flip);
+    } else if ((kind === 'walk' || kind === 'carry') && LEG_AMP[this.DIRS[d]]) this.drawLegged(ctx, img, F, s, o, d, flip, this.frame(idleFrame(d)[0]));
     else ctx.drawImage(img, fx, fy, fw, fh, -ax * s, -ay * s, fw * s, fh * s);
     // a carried load, held in front of the belly
     if (o.carry && (kind === 'carry' || kind === 'idle' || kind === 'walk')) this.drawCarry(ctx, o.carry, s, flip, d);
@@ -77,11 +78,12 @@ const Hero = {
   // like a paper puppet: the torso bobs and rocks on the hips, the arms (front / back views) swing against the legs, and each leg is cut
   // into thin slices that are shifted by increasing amounts down the leg, so it swings from the hip, bends at the knee and lifts the foot
   // during its swing phase. Side views already have a strong stride in the sheet and are drawn as they are.
-  drawLegged(ctx, img, F, s, o, d, flip) {
-    const [fx, fy, fw, fh, ax, ay] = F, dn = this.DIRS[d], amp = LEG_AMP[dn], hipY = Math.round(fh * 0.62), legLen = fh - hipY, cut = Math.round(ax);
+  drawLegged(ctx, img, F, s, o, d, flip, FL) {
+    const [fx, fy, fw, fh, ax, ay] = F, dn = this.DIRS[d], amp = LEG_AMP[dn], hipY = Math.round(fh * 0.62), diag = dn !== 'S' && dn !== 'N' && dn !== 'E' && dn !== 'W';
+    const [lx, ly, lw, lh, lax, lay] = FL, lHip = Math.round(lh * 0.62), legLen = lh - lHip, cut = Math.round(lax);      // the legs come from the standing picture (FL)
     const frontBack = dn === 'S' || dn === 'N', yS = Math.round(fh * 0.27), armW = Math.round(fw * 0.27);
-    const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw), hy = 0.5 * Math.cos(yaw), sgn = flip ? -1 : 1;
-    const stride = 8 * amp * s, lift = 6 * amp * s, bob = 2.4 * amp * s * Math.abs(Math.cos(ph)), sway = 0.04 * amp * Math.sin(ph) * sgn;
+    const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw) * (diag ? 0.4 : 1), hy = 0.5 * Math.cos(yaw) * (diag ? 2.2 : 1), sgn = flip ? -1 : 1;
+    const stride = 8 * amp * s, lift = (diag ? 7 : 6) * amp * s, bob = 2.4 * amp * s * Math.abs(Math.cos(ph)), sway = 0.04 * amp * Math.sin(ph) * sgn;
     const put = (sx, sy, w, h, ox, oy) => { if (w > 0 && h > 0) ctx.drawImage(img, fx + sx, fy + sy, w, h, (sx - ax) * s + ox, (sy - ay) * s + oy, w * s, h * s); };
     // torso, head and arms rock together about the hips
     ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.rotate(sway); ctx.translate(0, -(hipY - ay) * s);
@@ -98,11 +100,11 @@ const Hero = {
     for (let side = 0; side < 2; side++) {
       const th = ph + side * Math.PI, sw = Math.sin(th), lf = Math.max(0, Math.cos(th));
       const Sx = hx * stride * sw, Sy = hy * stride * sw - lift * lf, kneeBack = -hx * stride * 0.7 * lf, kneeBackY = -hy * stride * 0.7 * lf;
-      const ky = (bob + Sy) / (legLen * s), sx0 = side ? cut : 0, sw0 = side ? fw - cut : cut;
+      const ky = (bob + Sy) / (legLen * s), sx0 = side ? cut : 0, sw0 = side ? lw - cut : cut;
       for (let k = 0; k < n; k++) {
-        const t = (k * SL + SL / 2) / legLen, e = t * t * (3 - 2 * t), sy = hipY + k * SL, sh = Math.min(SL, fh - sy);
-        const dx = (Sx * t + kneeBack * Math.max(0, (t - 0.3) / 0.7) ** 1.4) * sgn, dy = (hipY - ay) * s - bob + k * SL * s * (1 + ky) + kneeBackY * e;
-        if (sw0 > 0) ctx.drawImage(img, fx + sx0, fy + sy, sw0, sh, (sx0 - ax) * s + dx, dy, sw0 * s, sh * (1 + ky) * s + 0.7);
+        const t = (k * SL + SL / 2) / legLen, e = t * t * (3 - 2 * t), sy = lHip + k * SL, sh = Math.min(SL, lh - sy);
+        const dx = (Sx * t + kneeBack * Math.max(0, (t - 0.3) / 0.7) ** 1.4) * sgn, dy = (lHip - lay) * s - bob + k * SL * s * (1 + ky) + kneeBackY * e;
+        if (sw0 > 0) ctx.drawImage(img, lx + sx0, ly + sy, sw0, sh, (sx0 - lax) * s + dx, dy, sw0 * s, sh * (1 + ky) * s + 0.7);
       }
     }
   },
