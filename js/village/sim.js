@@ -4,7 +4,7 @@ const SAVE_KEY = 'ashen-hollow-village-v1';
 
 const V = {
   seed: 1, res: { gold: 300, wood: 200 }, buildings: [], trees: [], occ: new Int16Array(GN * GN),
-  hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
+  hero: null, guards: [], villagers: [], hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
   heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
   cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
@@ -13,6 +13,9 @@ const tileOf = (v) => Math.floor(v);
 const occAt = (i, j) => (inGrid(i, j) ? V.occ[j * GN + i] : -2);
 const bById = id => V.buildings.find(b => b.id === id);
 const toast = (m) => V.cb.toast(m);
+const sfxAt = (name, i, j) => Sfx.at(name, i, j);
+// turn a unit to look at a point on the map (tile coords)
+function lookAt(u, ti, tj) { const dx = ti - u.i, dy = tj - u.j, l = Math.hypot(dx, dy); if (l > 0.01) { u.fdir = { x: dx / l, y: dy / l }; u.face = (dx - dy) >= 0 ? 1 : -1; } }
 
 // ---------------------------------------------------------------- resources
 function caps() {
@@ -75,7 +78,7 @@ function buildNew(type, i, j) {
   pay(d.cost[0]);
   const t = d.time[0];
   addBuilding(type, i, j, { state: 'building', buildT: t, buildTotal: t, hp: 1 });
-  Sfx.play('place'); V.cb.changed();
+  sfxAt('place', i + 1, j + 1); V.cb.changed();
   return null;
 }
 function upgradeCheck(b) {
@@ -95,7 +98,7 @@ function upgradeBuilding(b) {
   const d = BDEF[b.type];
   pay(d.cost[b.level]);
   b.state = 'building'; b.up = b.level + 1; b.buildTotal = d.time[b.level]; b.buildT = b.buildTotal;
-  Sfx.play('craft'); V.cb.changed();
+  sfxAt('craft', b.i + 1, b.j + 1); V.cb.changed();
   return null;
 }
 function rebuildCost(b) {
@@ -114,7 +117,7 @@ function collect(b) {
   const d = BDEF[b.type];
   if (b.state !== 'built' || d.kind !== 'collector') return 0;
   const n = addRes(d.res, Math.floor(b.prod));
-  if (n > 0) { b.prod -= n; Sfx.play('coin'); floatText(b.i + b.w / 2, b.j + b.d / 2, 60, `+${n} ${d.res}`, d.res === 'gold' ? '#ffd966' : '#c8a070'); }
+  if (n > 0) { b.prod -= n; sfxAt('coin', b.i + b.w / 2, b.j + b.d / 2); floatText(b.i + b.w / 2, b.j + b.d / 2, 60, `+${n} ${d.res}`, d.res === 'gold' ? '#ffd966' : '#c8a070'); }
   else if (V.res[d.res] >= caps()[d.res]) toast(`Your ${d.res} storage is full.`);
   return n;
 }
@@ -126,7 +129,7 @@ function damageBuilding(b, dmg, srcX, srcY) {
 function destroyBuilding(b) {
   const cx = b.i + b.w / 2, cy = b.j + b.d / 2;
   burst(cx, cy, 20 + b.w * 8, ['#8a8478', '#5a5248', '#c9a070', '#3a2e24'], 140, 0.9);
-  Sfx.play('die'); V.shake = Math.max(V.shake, 8);
+  sfxAt('crash', cx, cy); sfxAt('explode', cx, cy); V.shake = Math.max(V.shake, 8);
   if (b.type === 'townhall') { b.state = 'ruin'; b.hp = 0; setOcc(b, 0); V.state = 'lost'; V.cb.changed(); return; }
   setOcc(b, 0);
   if (b.type === 'wall') { V.buildings.splice(V.buildings.indexOf(b), 1); return; }
@@ -215,7 +218,7 @@ function followPath(u, dt, speed) {
   }
   return u.path.length > 0;
 }
-function faceFrom(u) { if (u.dir) { const sx = (u.dir.x - u.dir.y); if (Math.abs(sx) > 0.05) u.face = sx > 0 ? 1 : -1; } }
+function faceFrom(u) { if (u.dir) { u.fdir = { x: u.dir.x, y: u.dir.y }; const sx = (u.dir.x - u.dir.y); if (Math.abs(sx) > 0.05) u.face = sx > 0 ? 1 : -1; } }
 
 // ---------------------------------------------------------------- hero
 const heroStats = () => ({ maxHp: HERO_DEF.hp + (V.heroLevel - 1) * 25, dmg: HERO_DEF.dmg + (V.heroLevel - 1) * 3 });
@@ -223,7 +226,7 @@ function spawnHero() {
   const hall = V.buildings.find(b => b.type === 'townhall');
   const s = heroStats();
   V.hero = { i: hall.i + 1.5, j: hall.j + hall.d + 0.7, hp: s.maxHp, maxHp: s.maxHp, face: 1, dir: null, path: [], order: null, atk: -1, atkHit: false, strikeCd: 0, strikeT: -1,
-    dead: false, respawn: 0, chop: 0, anim: 0, walkT: 0, inv: 0, hurt: 0 };
+    dead: false, respawn: 0, chop: 0, hits: 0, anim: 0, walkT: 0, inv: 0, hurt: 0, fdir: { x: 0.7, y: 0.7 }, yaw: 0, lastStep: 0, chopping: false };
 }
 function gainXp(n) {
   V.heroXp += n;
@@ -243,7 +246,7 @@ function orderMove(i, j) {
 function orderAttack(e) { const h = V.hero; if (!h || h.dead) return; h.order = { type: 'attack', e }; h.path = []; h.pathT = 0; }
 function orderChop(t) {
   const h = V.hero; if (!h || h.dead) return;
-  h.order = { type: 'chop', t }; h.path = pathToTree(h, t) || []; h.chop = 0;
+  h.order = { type: 'chop', t }; h.path = pathToTree(h, t) || []; h.chop = 0; h.hits = 0;
   if (!h.path.length && !(Math.abs(tileOf(h.i) - t.i) <= 1 && Math.abs(tileOf(h.j) - t.j) <= 1)) { h.order = null; toast("The hero can't reach that tree."); }
 }
 function heroStrike() {
@@ -251,9 +254,10 @@ function heroStrike() {
   if (!h || h.dead || h.strikeCd > 0) { if (h && h.strikeCd > 0) Sfx.play('deny'); return false; }
   h.strikeCd = HERO_DEF.strikeCd; h.strikeT = 0; h.inv = 0.5; h.atk = -1;
   const dmg = heroStats().dmg * HERO_DEF.strikeDmg;
-  Sfx.play('dash'); V.shake = Math.max(V.shake, 5);
+  sfxAt('strike', h.i, h.j); V.shake = Math.max(V.shake, 5);
   V.rings.push({ i: h.i, j: h.j, r: 0.3, max: HERO_DEF.strikeRadius, t: 0 });
   burst(h.i, h.j, 24, ['#bfe8ff', '#ffffff', '#ffe9a0'], 190, 0.6, 20);
+  V.hitstop = Math.max(V.hitstop, 0.07);
   for (const e of V.enemies) if (!e.dying && Math.hypot(e.i - h.i, e.j - h.j) <= HERO_DEF.strikeRadius) {
     e.hurt(dmg, 'hero');
     const d = Math.hypot(e.i - h.i, e.j - h.j) || 1; e.kx = (e.i - h.i) / d * 3.5; e.ky = (e.j - h.j) / d * 3.5; e.stun = 0.45;
@@ -278,14 +282,19 @@ function updateHero(dt) {
   if (h.strikeT >= 0) { h.strikeT += dt; if (h.strikeT > 0.4) h.strikeT = -1; }
   const o = h.order;
   // swing timeline
+  h.chopping = false;
   if (h.atk >= 0) {
     h.atk += dt;
     if (!h.atkHit && h.atk >= 0.18) {
       h.atkHit = true;
       const t = h.atkTarget;
       const tgt = t && !t.dying ? t : nearestEnemy(h.i, h.j, HERO_DEF.range + 0.4);
-      Sfx.play('slash');
-      if (tgt && Math.hypot(tgt.i - h.i, tgt.j - h.j) <= HERO_DEF.range + 0.6) { tgt.hurt(st.dmg, 'hero'); Sfx.play('hit'); }
+      if (tgt && Math.hypot(tgt.i - h.i, tgt.j - h.j) <= HERO_DEF.range + 0.6) {
+        tgt.hurt(st.dmg, 'hero'); sfxAt('hit', tgt.i, tgt.j); V.hitstop = Math.max(V.hitstop, 0.05); V.shake = Math.max(V.shake, 2.5);
+        burst(tgt.i, tgt.j, 9, ['#ffffff', '#ffe9a0', '#ffb060'], 120, 0.3, 20);
+        const dx = tgt.i - h.i, dy = tgt.j - h.j, l = Math.hypot(dx, dy) || 1; if (!tgt.boss) { tgt.kx = dx / l * 1.6; tgt.ky = dy / l * 1.6; tgt.stun = Math.max(tgt.stun, 0.12); }
+        V.slashFx.push({ i: tgt.i, j: tgt.j, t: 0, a: Math.atan2((dx - dy), (dx + dy) * 0.5) });
+      }
     }
     if (h.atk >= 0.39) h.atk = -1;
     return;
@@ -296,21 +305,17 @@ function updateHero(dt) {
     if (!o.e || o.e.dying) { h.order = null; }
     else {
       const d = Math.hypot(o.e.i - h.i, o.e.j - h.j);
-      if (d <= HERO_DEF.range) { h.face = ((o.e.i - o.e.j) - (h.i - h.j)) >= 0 ? 1 : -1; h.atk = 0; h.atkHit = false; h.atkTarget = o.e; }
+      if (d <= HERO_DEF.range) { lookAt(h, o.e.i, o.e.j); h.atk = 0; h.atkHit = false; h.atkTarget = o.e; sfxAt('slash', h.i, h.j); }
       else { h.pathT = (h.pathT || 0) - dt; if (h.pathT <= 0 || !h.path.length) { h.path = pathToTile(h, tileOf(o.e.i), tileOf(o.e.j)) || []; h.pathT = 0.4; } moving = followPath(h, dt, HERO_DEF.speed); }
     }
   } else if (o && o.type === 'chop') {
     const t = o.t;
-    if (!t.alive) h.order = null;
+    if (!t.alive || t.felled) { h.order = null; h.chop = 0; }
     else if (Math.abs(tileOf(h.i) - t.i) <= 1 && Math.abs(tileOf(h.j) - t.j) <= 1 && !h.path.length) {
-      h.chop += dt; h.face = ((t.i - t.j) - (h.i - h.j)) >= 0 ? 1 : -1;
-      if (!h.chopFx || h.chopFx <= 0) { h.chopFx = 0.45; Sfx.play('mine'); burst(t.i + 0.5, t.j + 0.5, 4, ['#c8a070', '#8a6240'], 60, 0.4); }
-      h.chopFx -= dt;
-      if (h.chop >= 1.8) {
-        t.alive = false; V.occ[t.j * GN + t.i] = 0; h.order = null; h.chop = 0;
-        const n = addRes('wood', 6); floatText(t.i + 0.5, t.j + 0.5, 70, n ? `+${n} wood` : 'storage full', '#c8a070'); Sfx.play('break');
-        burst(t.i + 0.5, t.j + 0.5, 12, ['#5a8a46', '#78a85a', '#8a6240'], 110, 0.7);
-      }
+      // three axe swings (0.9 s each, impact at 62% of the swing), then the tree comes down
+      lookAt(h, t.i + 0.5, t.j + 0.5); h.chopping = true; h.chop += dt;
+      const due = h.chop >= 0.558 ? Math.floor((h.chop - 0.558) / 0.9) + 1 : 0;
+      while (h.hits < due && h.order === o) { h.hits++; chopHit(h, t); }
     } else moving = followPath(h, dt, HERO_DEF.speed);
   } else if (o && o.type === 'move') {
     moving = followPath(h, dt, HERO_DEF.speed);
@@ -320,7 +325,40 @@ function updateHero(dt) {
     const e = nearestEnemy(h.i, h.j, V.raid.active ? 80 : 3.2);   // during a raid the idle hero hunts
     if (e) { h.order = { type: 'attack', e, auto: true }; }
   }
-  if (moving) { h.walkT += dt * 1.6; faceFrom(h); }
+  if (moving) {
+    h.walkT += dt * 1.6; faceFrom(h);
+    const step = Math.floor(h.walkT * 7.05 / Math.PI);                  // a footfall every half stride
+    if (step !== h.lastStep) { h.lastStep = step; sfxAt('step', h.i, h.j); if (Math.random() < 0.5) V.parts.push({ x: isoX(h.i, h.j), y: isoY(h.i, h.j) + 2, vx: rnd(-8, 8), vy: -10, life: 0.5, max: 0.5, c: 'rgba(190,170,130,.55)', s: 3, g: -10 }); }
+  }
+}
+// an axe lands on a tree: chips, shake and a thunk; the third hit fells it
+function chopHit(h, t) {
+  t.shake = 0.42; t.hits = (t.hits || 0) + 1;
+  const x = t.i + 0.5, y = t.j + 0.5;
+  sfxAt('chop', x, y); V.shake = Math.max(V.shake, 1.2);
+  for (let k = 0; k < 7; k++) { const a = Math.random() * 6.283, sp = 40 + Math.random() * 80; V.parts.push({ x: isoX(x, y) + rnd(-3, 3), y: isoY(x, y) - 22 + rnd(-4, 4), vx: Math.cos(a) * sp, vy: -Math.abs(Math.sin(a)) * sp - 30, life: 0.7, max: 0.7, c: k % 2 ? '#c8a070' : '#e2c08a', s: 2 + Math.random() * 2.2, g: 380, chip: true }); }
+  for (let k = 0; k < 3; k++) V.parts.push({ x: isoX(x, y) + rnd(-12, 12), y: isoY(x, y) - 70 + rnd(-12, 10), vx: rnd(-14, 14), vy: rnd(10, 40), life: 1.0, max: 1.0, c: ['#78a85a', '#5a8a46', '#a8c070'][k], s: 3, g: 60, leaf: true });
+  if (t.hits >= 3) {
+    t.felled = true; V.occ[t.j * GN + t.i] = 0;
+    t.fall = { t: 0, dir: (isoX(t.i, t.j) >= isoX(h.i, h.j)) ? 1 : -1 };
+    h.order = null; h.chop = 0; h.hits = 0;
+  }
+}
+// trees: shake and fall animations, then the wood
+function updateTrees(dt) {
+  for (const t of V.trees) {
+    if (t.shake > 0) t.shake = Math.max(0, t.shake - dt);
+    if (t.fall) {
+      t.fall.t += dt;
+      if (!t.fall.cracked && t.fall.t > 0.35) { t.fall.cracked = true; sfxAt('crash', t.i, t.j); }
+      if (t.fall.t >= 0.95) {
+        const fd = t.fall.dir; t.alive = false; t.fall = null;
+        const n = addRes('wood', 6); floatText(t.i + 0.5, t.j + 0.5, 70, n ? `+${n} wood` : 'storage full', '#c8a070');
+        sfxAt('thud', t.i, t.j); V.shake = Math.max(V.shake, 3.5);
+        burst(t.i + 0.5 + fd * 0.6, t.j + 0.5 - fd * 0.6, 16, ['#5a8a46', '#78a85a', '#8a6240', '#a8c070'], 130, 0.9);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------- guards
@@ -348,7 +386,7 @@ function updateGuards(dt) {
     const hx = home.i + home.w / 2, hy = home.j + home.d / 2;
     if (e && Math.hypot(e.i - hx, e.j - hy) < 9) {
       const dd = Math.hypot(e.i - g.i, e.j - g.j);
-      if (dd < 1.0 && g.cd <= 0) { g.atk = 0; g.atkHit = false; g.target = e; g.face = ((e.i - e.j) - (g.i - g.j)) >= 0 ? 1 : -1; }
+      if (dd < 1.0 && g.cd <= 0) { g.atk = 0; g.atkHit = false; g.target = e; lookAt(g, e.i, e.j); sfxAt('slash', g.i, g.j); g.face = ((e.i - e.j) - (g.i - g.j)) >= 0 ? 1 : -1; }
       else if (dd >= 1.0) {
         g.pathT = (g.pathT || 0) - dt;
         if (g.pathT <= 0 || !g.path.length) { g.path = pathToTile(g, tileOf(e.i), tileOf(e.j)) || []; g.pathT = 0.5; }
@@ -387,7 +425,7 @@ class Enemy {
     if (this.d.gold) floatText(this.i, this.j, 74, `+${this.d.gold}`, '#ffd966');
     if (this.boss) { addRes('wood', 40); burst(this.i, this.j, 30, ['#a060ff', '#ffe08a'], 160, 1, 20); V.shake = 12; }
     gainXp(this.d.xp);
-    Sfx.play('die');
+    sfxAt(this.boss ? 'boss' : 'die', this.i, this.j);
     if (this.type === 'necro' || this.type === 'spawn' || this.type === 'king') burst(this.i, this.j, 14, ['#a060ff', '#4fd8ff'], 110, 0.7);
   }
   pickTarget() {
@@ -429,8 +467,8 @@ class Enemy {
           if (d.ranged) {
             const sx = this.i, sy = this.j;
             V.proj.push({ kind: this.type === 'king' ? 'skull' : 'orb', i: sx, j: sy, z: 34, ti: t.i + t.w / 2, tj: t.j + t.d / 2, tb: t, dmg: d.dmg * (this.dmgMul || 1), speed: 6.5, t: 0, fromEnemy: true });
-            Sfx.play('cast');
-          } else { damageBuilding(t, d.dmg * (this.dmgMul || 1)); Sfx.play('hit'); burst(t.i + t.w / 2, t.j + t.d / 2, 4, ['#c9a070', '#8a8478'], 70, 0.4); }
+            sfxAt('cast', this.i, this.j);
+          } else { damageBuilding(t, d.dmg * (this.dmgMul || 1)); sfxAt('thud', t.i + t.w / 2, t.j + t.d / 2); burst(t.i + t.w / 2, t.j + t.d / 2, 4, ['#c9a070', '#8a8478'], 70, 0.4); }
         }
       }
       if (this.atk >= total) { this.atk = -1; }
@@ -495,8 +533,8 @@ class Enemy {
 function hurtUnit(u, dmg) {
   if (u === V.hero) {
     if (u.dead || u.inv > 0) return;
-    u.hp -= dmg; u.hurt = 0.25; u.inv = 0.25; floatText(u.i, u.j, 60, '-' + Math.round(dmg), '#ff6666'); Sfx.play('hurt');
-    if (u.hp <= 0) { u.hp = 0; u.dead = true; u.respawn = 12; u.order = null; u.atk = -1; toast('Your hero has fallen. Respawning at the Town Hall...'); Sfx.play('die'); }
+    u.hp -= dmg; u.hurt = 0.25; u.inv = 0.25; floatText(u.i, u.j, 60, '-' + Math.round(dmg), '#ff6666'); sfxAt('hurt', u.i, u.j);
+    if (u.hp <= 0) { u.hp = 0; u.dead = true; u.respawn = 12; u.order = null; u.atk = -1; toast('Your hero has fallen. Respawning at the Town Hall...'); sfxAt('die', u.i, u.j); }
   } else { u.hp -= dmg; floatText(u.i, u.j, 50, '-' + Math.round(dmg), '#ff9a6a'); }
 }
 
@@ -506,10 +544,11 @@ function updateDefenses(dt) {
     b.flash = Math.max(0, b.flash - dt);
     if (b.state === 'building') {
       b.buildT -= dt;
+      b.hamT = (b.hamT || 0) - dt; if (b.hamT <= 0) { b.hamT = rnd(0.55, 0.9); sfxAt('hammer', b.i + b.w / 2, b.j + b.d / 2); }
       if (b.buildT <= 0) {
         const d = BDEF[b.type];
         if (b.up) { b.level = b.up; b.up = 0; } b.state = 'built'; b.maxHp = d.hp[b.level - 1]; b.hp = b.maxHp; b.armed = true;
-        burst(b.i + b.w / 2, b.j + b.d / 2, 18, ['#ffe08a', '#fff', '#c9a070'], 120, 0.7, 30); Sfx.play('power');
+        burst(b.i + b.w / 2, b.j + b.d / 2, 18, ['#ffe08a', '#fff', '#c9a070'], 120, 0.7, 30); sfxAt(b.level > 1 ? 'upgrade' : 'done', b.i + b.w / 2, b.j + b.d / 2);
         toast(`${d.name} ${b.level > 1 ? 'upgraded to level ' + b.level : 'is ready'}.`); V.cb.changed();
       }
       continue;
@@ -536,10 +575,10 @@ function updateDefenses(dt) {
           b.cd = d.cd;
           const dmg = d.dmg[b.level - 1];
           const dd = Math.hypot(tgt.i - cx, tgt.j - cy);
-          if (b.type === 'archer') { V.proj.push({ kind: 'arrow', i: cx, j: cy, z: 72, ti: tgt.i, tj: tgt.j, te: tgt, dmg, speed: 13, t: 0 }); Sfx.play('slash'); }
-          else if (b.type === 'magetower') { V.proj.push({ kind: 'bolt', i: cx, j: cy, z: 84, ti: tgt.i, tj: tgt.j, te: tgt, dmg, splash: d.splash, speed: 9, t: 0, air: true }); Sfx.play('cast'); b.recoil = 0.25; }
-          else if (b.type === 'mortar') { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i + (tgt.vx || 0), tj: tgt.j, dmg, splash: d.splash, speed: 4.6, t: 0, d0: dd, arc: 70 }); Sfx.play('break'); b.recoil = 0.3; burst(cx + Math.cos(b.aim) * 0.5, cy + Math.sin(b.aim) * 0.5, 10, ['#ddd', '#999', '#ffcf70'], 60, 0.6, 30); }
-          else { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i, tj: tgt.j, dmg, splash: d.splash, speed: 7.5, t: 0, d0: dd, arc: 28 }); Sfx.play('hit'); b.recoil = 0.2; burst(cx + Math.cos(b.aim) * 0.6, cy + Math.sin(b.aim) * 0.6, 6, ['#ddd', '#999'], 40, 0.5); }
+          if (b.type === 'archer') { V.proj.push({ kind: 'arrow', i: cx, j: cy, z: 72, ti: tgt.i, tj: tgt.j, te: tgt, dmg, speed: 13, t: 0 }); sfxAt('arrow', cx, cy); }
+          else if (b.type === 'magetower') { V.proj.push({ kind: 'bolt', i: cx, j: cy, z: 84, ti: tgt.i, tj: tgt.j, te: tgt, dmg, splash: d.splash, speed: 9, t: 0, air: true }); sfxAt('magic', cx, cy); b.recoil = 0.25; }
+          else if (b.type === 'mortar') { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i + (tgt.vx || 0), tj: tgt.j, dmg, splash: d.splash, speed: 4.6, t: 0, d0: dd, arc: 70 }); sfxAt('mortar', cx, cy); b.recoil = 0.3; burst(cx + Math.cos(b.aim) * 0.5, cy + Math.sin(b.aim) * 0.5, 10, ['#ddd', '#999', '#ffcf70'], 60, 0.6, 30); }
+          else { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i, tj: tgt.j, dmg, splash: d.splash, speed: 7.5, t: 0, d0: dd, arc: 28 }); sfxAt('cannon', cx, cy); b.recoil = 0.2; burst(cx + Math.cos(b.aim) * 0.6, cy + Math.sin(b.aim) * 0.6, 6, ['#ddd', '#999'], 40, 0.5); }
         }
       }
       b.recoil = Math.max(0, (b.recoil || 0) - dt);
@@ -558,7 +597,7 @@ function updateDefenses(dt) {
       for (const e of V.enemies) {
         if (e.dying || e.flying) continue;
         if (Math.hypot(e.i - (b.i + 0.5), e.j - (b.j + 0.5)) < 0.8) {
-          b.armed = false; Sfx.play('break'); V.shake = Math.max(V.shake, 5);
+          b.armed = false; sfxAt('explode', b.i + b.w / 2, b.j + b.d / 2); V.shake = Math.max(V.shake, 5);
           burst(b.i + 0.5, b.j + 0.5, 22, ['#b9bcc0', '#e8e8e8', '#6a6a6a'], 150, 0.6, 30);
           V.rings.push({ i: b.i + 0.5, j: b.j + 0.5, r: 0.2, max: 1.5, t: 0 });
           for (const t of V.enemies) if (!t.dying && !t.flying && Math.hypot(t.i - b.i - 0.5, t.j - b.j - 0.5) < 1.5) t.hurt(d.dmg[b.level - 1], 'trap');
@@ -576,16 +615,16 @@ function updateProjectiles(dt) {
     const dx = p.ti - p.i, dy = p.tj - p.j, d = Math.hypot(dx, dy), step = p.speed * dt;
     if (d <= step + 0.1) {
       p.dead = true;
-      if (p.kind === 'arrow') { if (p.te && !p.te.dying) { p.te.hurt(p.dmg, 'tower'); Sfx.play('hit'); } }
+      if (p.kind === 'arrow') { if (p.te && !p.te.dying) { p.te.hurt(p.dmg, 'tower'); sfxAt('hit', p.ti, p.tj); } }
       else if (p.kind === 'bolt') {
         burst(p.ti, p.tj, 14, ['#9ad0ff', '#d6f0ff', '#7a7aff'], 110, 0.5, 20); V.rings.push({ i: p.ti, j: p.tj, r: 0.2, max: p.splash, t: 0, blue: true });
         for (const e of V.enemies) if (!e.dying && Math.hypot(e.i - p.ti, e.j - p.tj) <= p.splash) e.hurt(p.dmg, 'tower');
-        Sfx.play('hit');
+        sfxAt('magic', p.ti, p.tj);
       }
       else if (p.kind === 'ball') {
         burst(p.ti, p.tj, 12, ['#ffcf70', '#ff9a40', '#555'], 120, 0.5, 20); V.rings.push({ i: p.ti, j: p.tj, r: 0.2, max: p.splash, t: 0 });
         for (const e of V.enemies) if (!e.dying && !e.flying && Math.hypot(e.i - p.ti, e.j - p.tj) <= p.splash) e.hurt(p.dmg, 'tower');
-        Sfx.play('break');
+        sfxAt('explode', p.ti, p.tj); V.shake = Math.max(V.shake, 2);
       } else if (p.tb) { damageBuilding(p.tb, p.dmg); burst(p.ti, p.tj, 8, ['#c08cff', '#8a60ff'], 100, 0.5); }
     } else { p.i += dx / d * step; p.j += dy / d * step; }
   }
@@ -611,7 +650,7 @@ function startRaid() {
   V.raid.active = true; V.raid.queue = raidQueue(n); V.raid.total = V.raid.queue.length; V.raid.killed = 0; V.raid.spawnT = 1.5;
   const lanes = [0, 1, 2, 3].sort(() => Math.random() - 0.5).slice(0, 1 + Math.min(3, Math.floor(n / 3)));
   V.raid.lanes = lanes;
-  Sfx.play('night'); V.cb.banner(`Raid ${n}`, n % 5 === 0 ? 'A great evil approaches' : 'The dead are coming');
+  Sfx.play('horn'); Sfx.setMusic(n % 5 === 0 ? 'boss' : 'raid'); V.cb.banner(`Raid ${n}`, n % 5 === 0 ? 'A great evil approaches' : 'The dead are coming');
   V.cb.changed();
   return true;
 }
@@ -621,6 +660,7 @@ function spawnEnemy(type) {
   const e = new Enemy(type, lane.i + rnd(-0.8, 0.8), lane.j + rnd(-0.8, 0.8), hpMul);
   e.dmgMul = 1 + 0.05 * (n - 1);
   V.enemies.push(e);
+  if (Math.random() < 0.5 || EDATA[type].boss) sfxAt(type === 'skeleton' ? 'skeleton' : 'zombie', e.i, e.j);
   return e;
 }
 function endRaid() {
@@ -634,7 +674,7 @@ function endRaid() {
   V.raid.n++;
   if (V.hero && !V.hero.dead && !V.hero.order) { const hl = V.buildings.find(b => b.type === 'townhall'); if (hl) orderMove(hl.i + 1.5, hl.j + hl.d + 0.7); }
   V.cb.banner('Raid repelled', `+${gg} gold  +${ww} wood`);
-  Sfx.play('dawn'); saveGame(); V.cb.changed();
+  Sfx.play('dawn'); Sfx.setMusic('peace'); saveGame(); V.cb.changed();
 }
 function updateRaid(dt) {
   const r = V.raid;
@@ -643,7 +683,7 @@ function updateRaid(dt) {
   if (r.queue.length && r.spawnT <= 0) {
     const t = r.queue.shift(); spawnEnemy(t);
     r.spawnT = t === 'knight' || t === 'king' ? 1 : rnd(0.5, 1.1);
-    if (t === 'knight' || t === 'king') { Sfx.play('boss'); V.cb.banner(EDATA[t].name, 'Defend the village!'); }
+    if (t === 'knight' || t === 'king') { Sfx.play('boss'); Sfx.setMusic('boss'); V.cb.banner(EDATA[t].name, 'Defend the village!'); }
   }
   if (!r.queue.length && !V.enemies.some(e => !e.dying)) endRaid();
 }
@@ -651,8 +691,13 @@ function updateRaid(dt) {
 // ---------------------------------------------------------------- main step
 function step(dt) {
   if (V.state !== 'play' || V.paused) return;
+  if (V.hitstop > 0) { V.hitstop = Math.max(0, V.hitstop - dt); dt *= 0.12; }   // a brief freeze-frame on heavy hits
   V.time += dt;
+  updateTrees(dt);
+  for (const f of V.slashFx) f.t += dt;
+  V.slashFx = V.slashFx.filter(f => f.t < 0.32);
   updateHero(dt); updateGuards(dt); updateDefenses(dt);
+  if (typeof Life !== 'undefined') Life.update(dt, V.time);
   for (const e of V.enemies) e.update(dt);
   V.enemies = V.enemies.filter(e => !e.dead);
   updateProjectiles(dt); updateRaid(dt);
@@ -677,7 +722,7 @@ function layoutTrees(removed) {
 }
 function newVillage() {
   V.seed = 1 + Math.floor(Math.random() * 1e6);
-  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, paused: false });
+  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, paused: false });
   V.raid = { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 };
   Terr.level = 1;
   Ground.build(V.seed); layoutTrees();
@@ -708,7 +753,7 @@ function expandMap() {
   const e = expandInfo();
   pay({ gold: e.gold, wood: e.wood });
   Terr.level = e.level;
-  Sfx.play('dawn'); V.shake = Math.max(V.shake, 6);
+  Sfx.play('cloud'); Sfx.play('dawn'); V.shake = Math.max(V.shake, 6);
   V.cb.expanded(Terr.level, false);
   V.cb.banner('The clouds part', `New land revealed: ${Terr.r * 2 + 1} x ${Terr.r * 2 + 1} tiles`);
   V.cb.changed();
@@ -727,7 +772,7 @@ function loadGame() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { s = null; }
   if (!s || !s.b || !s.b.some(b => b.type === 'townhall' && b.state !== 'ruin')) return false;
-  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, paused: false, seed: s.seed });
+  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, paused: false, seed: s.seed });
   V.raid = { n: s.raid || 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: s.best || 0 };
   Terr.level = clamp(s.terr || 1, 1, TERR_R.length);
   Ground.build(V.seed); layoutTrees(s.removed);

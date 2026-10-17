@@ -29,7 +29,7 @@ function pickTree(wx, wy) {
   let best = null;
   const g = groundTile(wx, wy);
   for (const t of V.trees) {
-    if (!t.alive || Math.abs(t.i - g.i) > 7 || Math.abs(t.j - g.j) > 7) continue;
+    if (!t.alive || t.felled || Math.abs(t.i - g.i) > 7 || Math.abs(t.j - g.j) > 7) continue;
     const x = isoX(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj), y = isoY(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj);
     if (wx > x - 28 * t.s && wx < x + 28 * t.s && wy > y - 110 * t.s && wy < y + 8) { if (!best || t.i + t.j > best.i + best.j) best = t; }
   }
@@ -194,7 +194,13 @@ function refreshHud() {
   $('rGold').textContent = `${Math.floor(V.res.gold)} / ${c.gold}`; $('rWood').textContent = `${Math.floor(V.res.wood)} / ${c.wood}`;
   $('rBuild').textContent = `${builderCount() - busyBuilders()}/${builderCount()}`;
   const hall = V.buildings.find(b => b.type === 'townhall');
-  $('chipHp').textContent = `Hall ${hall ? Math.ceil(hall.hp) : 0} · Hero ${V.hero ? (V.hero.dead ? 'down ' + Math.ceil(V.hero.respawn) + 's' : Math.ceil(V.hero.hp)) : 0}`;
+  const setBar = (id, f, num, txt) => { const el = $(id); const k = clamp(f, 0, 1); el.querySelector('.fill').style.transform = `scaleX(${k})`; el.querySelector('.trail').style.transform = `scaleX(${k})`; el.classList.toggle('low', k < 0.3 && k > 0); if (num) $(num).textContent = txt; };
+  setBar('barHall', hall ? hall.hp / hall.maxHp : 0, 'numHall', hall ? Math.ceil(hall.hp) : 0);
+  const hr = V.hero; setBar('barHero', hr && !hr.dead ? hr.hp / hr.maxHp : 0, 'numHero', hr ? (hr.dead ? Math.ceil(hr.respawn) + 's' : Math.ceil(hr.hp)) : 0);
+  setBar('barXp', V.heroXp / (24 * V.heroLevel), 'numXp', 'Lv ' + V.heroLevel);
+  const rr = V.raid, left = rr.active ? rr.queue.length + V.enemies.filter(e => !e.dying).length : 0;
+  $('rowRaid').style.display = rr.active ? 'flex' : 'none'; $('chipHp').classList.toggle('danger', rr.active);
+  if (rr.active) setBar('barRaid', rr.total ? left / rr.total : 0, 'numRaid', left);
   const sb = $('tStrike'), cd = V.hero ? V.hero.strikeCd : 0;
   sb.style.setProperty('--cd', cd > 0 ? (cd / HERO_DEF.strikeCd * 100) + '%' : '0%'); sb.classList.toggle('cooling', cd > 0);
   sb.querySelector('span').textContent = cd > 0 ? `Hero strike (${Math.ceil(cd)}s)` : 'Hero strike';
@@ -318,7 +324,15 @@ function wire() {
   $('bPause').onclick = () => { V.paused = !V.paused; $('bPause').textContent = V.paused ? 'Resume' : 'Pause'; };
   $('bNew').onclick = () => { if (confirm('Abandon this village and start a new one?')) { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } newVillage(); const h = hallCenter(); centerOn(h.i, h.j); } };
   $('lostNew').onclick = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) { } newVillage(); const h = hallCenter(); centerOn(h.i, h.j); };
-  $('bSound').onclick = () => { Sfx.muted = !Sfx.muted; $('bSound').textContent = Sfx.muted ? 'Sound off' : 'Sound on'; };
+  $('bSound').onclick = () => { Sfx.init(); Sfx.setMuted(!Sfx.muted); $('bSound').textContent = Sfx.muted ? 'Sound off' : 'Sound on'; if (!Sfx.muted) Sfx.play('click'); };
+  $('bMusic').onclick = () => { Sfx.init(); Sfx.setMusicOn(!Sfx.musicOn); $('bMusic').textContent = Sfx.musicOn ? 'Music on' : 'Music off'; Sfx.play('click'); };
+  // sounds pan and fade with where they happen on screen; things hidden under the clouds are muffled
+  Sfx.listener = (wi, wj) => {
+    const z = UI.cam.zoom, sx = (isoX(wi, wj) - UI.cam.x) * z, sy = (isoY(wi, wj) - UI.cam.y) * z;
+    const ox = Math.max(0, Math.abs(sx) - UI.W / 2) / UI.W, oy = Math.max(0, Math.abs(sy) - UI.H / 2) / UI.H;
+    let vol = 1 - (ox + oy) * 1.6; if (!Terr.has(wi, wj)) vol *= 0.45;
+    return { pan: clamp(sx / (UI.W / 2), -1, 1) * 0.8, vol: clamp(vol, 0, 1) };
+  };
   window.addEventListener('keydown', e => {
     Sfx.init();
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
@@ -359,7 +373,7 @@ function refreshInfoLive() {
 function showError(err) { console.error(err); const el = $('err'); el.style.display = 'flex'; el.textContent = 'Something went wrong: ' + err.message; }
 
 Assets.load().then(() => {
-  Trees.build(); Clouds.build(); wire(); resize();
+  Trees.build(); Clouds.build(); wire(); resize(); Sfx.setMusic('peace');
   if (!loadGame()) newVillage();
   const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95; refreshQuickBar();
   setTool('move'); refreshButtons(); refreshHud();

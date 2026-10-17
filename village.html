@@ -34,6 +34,18 @@
   canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   .chip { position: absolute; background: rgba(20,38,45,.92); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; pointer-events: none; }
   .chip.danger { background: rgba(86,30,24,.94); border-color: #a4503f; color: #ffd8cf; }
+  /* HUD panels with graphical bars */
+  .chip.hud { padding: 8px 12px 9px; min-width: 188px; border-radius: 10px; background: linear-gradient(#1c3640,#142830); box-shadow: 0 2px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08); }
+  .hud .row { display: flex; align-items: center; gap: 8px; font: 11px var(--mono); letter-spacing: .4px; color: var(--mute); } .hud .row + .row { margin-top: 6px; }
+  .hud .row .lab { width: 38px; text-transform: uppercase; } .hud .row .num { width: 44px; text-align: right; color: var(--ink); }
+  .hbar { position: relative; flex: 1; height: 10px; border-radius: 6px; background: #0c1519; border: 1px solid #060b0d; box-shadow: inset 0 1px 2px rgba(0,0,0,.6); overflow: hidden; }
+  .hbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; width: 100%; transform-origin: left; transition: transform .2s ease-out; }
+  .hbar i.trail { background: #f4efe0; transition: transform .9s ease-in .25s; opacity: .85; }
+  .hbar i.fill::after { content: ""; position: absolute; left: 0; right: 0; top: 1px; height: 38%; background: linear-gradient(rgba(255,255,255,.5), rgba(255,255,255,0)); border-radius: 6px; }
+  .hbar.hall i.fill { background: linear-gradient(#ffe69a,#d49a2a 55%,#8a5e14); } .hbar.hero i.fill { background: linear-gradient(#9fd8ff,#3f90e0 55%,#1f5aa0); }
+  .hbar.xp i.fill { background: linear-gradient(#e8d0ff,#a068e0 55%,#5a2e9a); } .hbar.raid i.fill { background: linear-gradient(#ff9a80,#d8402c 55%,#7a1810); }
+  .hbar.low i.fill { background: linear-gradient(#ff9a80,#d8402c 55%,#7a1810); animation: pulseBar .7s ease-in-out infinite alternate; } @keyframes pulseBar { to { filter: brightness(1.45); } }
+  .chip.hud.danger { background: linear-gradient(#5e231c,#401610); }
   #chipState { left: 14px; top: 14px; } #chipHp { right: 14px; top: 14px; }
   #mapInfo { left: 14px; bottom: 14px; font: 12px var(--mono); color: var(--mute); }
   .zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
@@ -97,13 +109,19 @@
       <div><h1>Hearthguard</h1><div class="sub">Your village · raids escalate · two bosses</div></div>
       <div class="spacer"></div>
       <button class="tiny" id="bSound">Sound on</button>
+      <button class="tiny" id="bMusic">Music on</button>
       <button class="tiny" id="bNew">New village</button>
       <button class="tiny" id="bPause">Pause</button>
     </div>
     <div class="stage">
       <canvas id="v"></canvas>
       <div class="chip" id="chipState">Peaceful preparation</div>
-      <div class="chip" id="chipHp">Hall 0 · Hero 0</div>
+      <div class="chip hud" id="chipHp">
+        <div class="row"><span class="lab">Hall</span><span class="hbar hall" id="barHall"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHall">0</span></div>
+        <div class="row"><span class="lab">Hero</span><span class="hbar hero" id="barHero"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHero">0</span></div>
+        <div class="row"><span class="lab">XP</span><span class="hbar xp" id="barXp"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numXp">Lv 1</span></div>
+        <div class="row" id="rowRaid" style="display:none"><span class="lab">Raid</span><span class="hbar raid" id="barRaid"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numRaid">0</span></div>
+      </div>
       <div class="chip" id="mapInfo"></div>
       <div id="qbar" title="Quick build"></div>
       <div class="zoom">
@@ -149,6 +167,8 @@
 <script src="js/village/art.js"></script>
 <script src="js/village/clouds.js"></script>
 <script src="js/village/sim.js"></script>
+<script src="js/village/rig.js"></script>
+<script src="js/village/life.js"></script>
 <script src="js/village/render.js"></script>
 <script src="js/village/ui.js"></script>
 </body>

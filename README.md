@@ -14,7 +14,9 @@ An isometric island village in the spirit of Clash of Clans. Gather resources, b
   - Utility: Barracks (guards in iron / gold / crystal armor), Healing Shrine (heals units, mends buildings), Builder's Hut (+1 builder each)
   - Decor: Lantern Post, Flower Garden, Fountain
 - **Raids**: *Start raid N* sends zombies, skeletons, necromancers and necro-spawn from the four lanes. Skeletons and the Cursed Knight (raid 5, 15, ...) hunt your defenses, the flying Necromancer King (raid 10, 20, ...) goes for the Town Hall. Lose the Town Hall and the village falls; other destroyed buildings become ruins you can rebuild at half price.
-- **Hero**: left-click inspects and collects, right-click commands (move, attack an enemy, chop a tree). `Space` is *Hero strike*, a shockwave on an 8 s cooldown. The idle hero hunts enemies on its own during raids. It levels up with kills and respawns at the Town Hall if it falls. Walking up or down the screen uses dedicated front and back walk animations, and units are depth-sorted so a hero standing in front of a building is drawn in front of it.
+- **Hero**: left-click inspects and collects, right-click commands (move, attack an enemy, chop a tree). `Space` is *Hero strike*, a shockwave on an 8 s cooldown. The idle hero hunts enemies on its own during raids. It levels up with kills and respawns at the Town Hall if it falls. The hero (and every guard and villager) is one small 3D rig drawn from any facing, so the character looks identical from all sides, with the sword on the hip, a proper slash with a blade trail, a spin strike, and a three-swing axe chop: the tree shakes with every blow, then topples and drops wood. Heavy hits freeze the frame for a beat. Units are depth-sorted so a hero standing in front of a building is drawn in front of it.
+- **Life**: villagers (2 to 7, growing with your village) hammer on construction sites, haul logs and coins home from the collectors and run for the Town Hall when a raid starts. A cobbled plaza, a well, barrels, crates, hay, torches, a campfire and bushes dress the village; buildings and trees cast sun shadows, birds, butterflies and drifting leaves move about, and the light turns to dusk (with torch glow) while a raid lasts.
+- **Bars and sound**: rounded health bars with a pale damage trail, an ornate boss bar, and a HUD with Hall / Hero / XP / raid-progress bars. All sound is synthesised live (no files): layered swings, hits, chops, hammering, towers, explosions, footsteps and monsters, panned and faded by where they happen on screen, plus a quiet generative score that changes for raids and bosses and a wind-and-birds ambience. `Sound` and `Music` buttons toggle them.
 - **Look**: per-pixel meadow, forest floor and dirt lanes with ruts and shoulders, tufts, flowers and stones; layered cliffs; five broadleaf species (oak, lime, olive, autumn, birch) and spruce with lit leaf clusters, barked trunks and soft shadows.
 - Camera: drag to pan (limited to your territory), wheel to zoom, *Follow hero*, *Village* (recentre), *World map* (jump anywhere). Progress is saved in the browser automatically.
 
@@ -73,7 +75,7 @@ Surface undead burn in sunlight at dawn, so a shelter of blocks will get you thr
 index.html            page shell
 js/assets.js          sprite atlas access
 js/sfx.js             shared audio
-js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), clouds, sim, render, ui
+js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), clouds, rig (character model), life (shadows, props, villagers, light), sim, render, ui
 village.html          village mode page
 js/world.js           tiles + world generation
 js/tiles.js           block textures and edge lighting
@@ -98,5 +100,6 @@ NODE_PATH=$(npm root -g) node tools/scenario_test.js <screenshot-dir>  # night, 
 NODE_PATH=$(npm root -g) node tools/feature_test.js <screenshot-dir>   # walk cycle, armor crafting/visuals, fall damage
 NODE_PATH=$(npm root -g) node tools/soak_test.js <screenshot-dir>      # 14 simulated minutes, death/victory/vault flows
 NODE_PATH=$(npm root -g) node tools/village_test.js <screenshot-dir>   # village: shop, placing, build, collect, upgrade, raid, save/load
+NODE_PATH=$(npm root -g) node tools/village_life_test.js <screenshot-dir>  # village: character rig, chop and fall, villagers, dusk, every sound voice
 NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot plays 12 raids including both bosses
 ```

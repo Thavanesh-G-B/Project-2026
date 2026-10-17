@@ -340,8 +340,15 @@ const Trees = {
   },
   draw(ctx, t, time, sway) {
     const sp = this.sprites[t.v], sc = t.s * 0.72, x = isoX(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj), y = isoY(t.i + 0.5 + t.ox, t.j + 0.5 + t.oj);
-    if (!sway) { ctx.drawImage(sp, x + sp.ox * sc, y + sp.oy * sc, sp.width * sc, sp.height * sc); return; }
-    const sh = Math.sin(time * 1.1 + t.ph) * 0.012 + Math.sin(time * 2.3 + t.ph * 2) * 0.004;
+    if (t.fall) {                                   // a felled tree topples about its base, accelerating, and fades into the ground
+      const f = clamp(t.fall.t / 0.95, 0, 1), ang = t.fall.dir * (f * f * 1.45 + Math.sin(f * 14) * 0.012 * (1 - f));
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.globalAlpha = f > 0.72 ? 1 - (f - 0.72) / 0.28 : 1;
+      ctx.drawImage(sp, sp.ox * sc, sp.oy * sc, sp.width * sc, sp.height * sc);
+      ctx.restore(); return;
+    }
+    if (!sway && !t.shake) { ctx.drawImage(sp, x + sp.ox * sc, y + sp.oy * sc, sp.width * sc, sp.height * sc); return; }
+    let sh = sway ? Math.sin(time * 1.1 + t.ph) * 0.012 + Math.sin(time * 2.3 + t.ph * 2) * 0.004 : 0;
+    if (t.shake > 0) sh += Math.sin(time * 52) * t.shake * 0.11;      // each axe blow rattles the whole crown
     ctx.save(); ctx.translate(x, y); ctx.transform(1, 0, sh, 1, 0, 0);
     ctx.drawImage(sp, sp.ox * sc, sp.oy * sc, sp.width * sc, sp.height * sc);
     ctx.restore();
