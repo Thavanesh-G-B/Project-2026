@@ -51,7 +51,7 @@ const out = process.argv[2] || '/tmp';
   // 4. sound: every voice plays without throwing, positional sound works, mute and music toggles
   const snd = await page.evaluate(() => { Sfx.init(); return { ctx: !!Sfx.ctx }; });
   const voices = await page.evaluate(() => {
-    const names = ['slash', 'hit', 'thud', 'hurt', 'jump', 'dash', 'strike', 'mine', 'chop', 'crash', 'break', 'hammer', 'place', 'pickup', 'coin', 'power', 'craft', 'upgrade', 'done', 'click', 'open', 'deny', 'step', 'arrow', 'cannon', 'mortar', 'explode', 'magic', 'cast', 'summon', 'heal', 'zombie', 'skeleton', 'die', 'horn', 'night', 'boss', 'dawn', 'cloud', 'fire'];
+    const names = ['slash', 'hit', 'thud', 'hurt', 'jump', 'dash', 'strike', 'mine', 'chop', 'crash', 'break', 'hammer', 'place', 'pickup', 'coin', 'power', 'craft', 'upgrade', 'done', 'click', 'open', 'deny', 'step', 'arrow', 'cannon', 'mortar', 'explode', 'magic', 'cast', 'summon', 'heal', 'zombie', 'skeleton', 'die', 'horn', 'night', 'boss', 'dawn', 'cloud', 'fire', 'charge', 'clang', 'creak', 'stepStone', 'stepDirt'];
     const bad = []; Sfx.THROTTLE = {};
     for (const n of names) { try { Sfx._last = {}; Sfx.play(n, { vol: 0.2 }); Sfx.at(n, MID, MID); } catch (e) { bad.push(n + ':' + e.message); } }
     try { Sfx.setMuted(true); Sfx.play('hit'); Sfx.setMuted(false); Sfx.setMusicOn(false); Sfx.setMusicOn(true); for (const m of ['raid', 'boss', 'peace']) Sfx.setMusic(m, true); } catch (e) { bad.push('ctl:' + e.message); }
@@ -77,6 +77,33 @@ const out = process.argv[2] || '/tmp';
     return { dx: x1 - x0, dy: y1 - y0, stopped: still[0] === V.hero.i && still[1] === V.hero.j, inTerr: Terr.has(Math.floor(V.hero.i), Math.floor(V.hero.j)) };
   });
   check('WASD moves the hero on screen axes and stops on release', kx.dx > 30 && kx.dy < -10 && kx.stopped && kx.inTerr, JSON.stringify(kx));
+
+  // 7. hero panel: click the hero -> stats; target a specific enemy; mana, strike without spinning, heal, stance, armour
+  await page.evaluate(() => { for (const e of V.enemies) e.dead = true; V.enemies = []; V.raid.active = false; V.hero.dead = false; V.hero.hp = V.hero.maxHp * 0.5; V.hero.mana = V.hero.maxMana; V.hero.healCd = 0; V.hero.strikeCd = 0; V.hero.strikeT = -1; V.hero.order = null; V.paused = false; UI.cam.zoom = 1.3; UI.follow = true; centerOn(V.hero.i, V.hero.j); });
+  await page.waitForTimeout(250);
+  const pt = await page.evaluate(() => { const r = document.getElementById('v').getBoundingClientRect(), h = V.hero; return { x: r.left + (isoX(h.i, h.j) - UI.cam.x) * UI.cam.zoom + UI.W / 2, y: r.top + (isoY(h.i, h.j) - 30 - UI.cam.y) * UI.cam.zoom + UI.H / 2 }; });
+  await page.mouse.click(pt.x, pt.y); await page.waitForTimeout(200);
+  const panel = await page.evaluate(() => ({ sel: V.selHero, html: document.getElementById('info').innerText }));
+  check('clicking the hero opens the stats panel', panel.sel && /Aldric/.test(panel.html) && /Damage per hit/i.test(panel.html) && /MP/.test(panel.html) && /Armor/i.test(panel.html), panel.html.replace(/\s+/g, ' ').slice(0, 120));
+  const abil = await page.evaluate(async () => {
+    const h = V.hero, out = {}; const press = a => document.querySelector(`[data-act="${a}"]`).dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }));
+    const m0 = h.mana, hp0 = h.hp; press('heal'); out.heal = h.hp > hp0 && h.mana < m0;
+    const e = new Enemy('zombie', h.i + 3, h.j + 1, 1); V.enemies.push(e); V.raid.active = true; await new Promise(r => setTimeout(r, 400));
+    document.querySelector('[data-act="atk"]').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); out.target = !!(h.order && h.order.type === 'attack' && h.order.e === e);
+    press('stance'); out.stance = h.stance; press('stop'); out.stopped = !h.order;
+    const seen = new Set(); h.strikeCd = 0; h.mana = h.maxMana; const m1 = h.mana; heroStrike(); out.manaSpent = h.mana < m1;
+    for (let k = 0; k < 24; k++) { step(1 / 40); const o = { x: 0, y: 0, s: 1, yaw: 0.6, kind: 'strike', u: Math.min(1, h.strikeT / 0.5), t: 0 }; Hero.draw(document.createElement('canvas').getContext('2d'), o); seen.add(o._name); }
+    out.frames = [...seen]; h.stance = 'aggressive'; V.raid.active = false; V.enemies = [];
+    V.heroLevel = 9; const base = 100; h.inv = 0; const hpA = h.hp; hurtUnit(h, base); out.armourTaken = +(hpA - h.hp).toFixed(1); V.heroLevel = 1;
+    return out;
+  });
+  check('hero abilities: heal, specific target, stance, stop, mana-cost strike', abil.heal && abil.target && abil.stance === 'defensive' && abil.stopped && abil.manaSpent, JSON.stringify(abil));
+  check('strike plays sword frames (no spinning through directions)', abil.frames.every(n => /^atk/.test(n)), JSON.stringify(abil.frames));
+  check('armour reduces damage taken', abil.armourTaken < 90 && abil.armourTaken > 70, String(abil.armourTaken));
+
+  // 8. reference-sheet buildings are used and the ground is dressed with boulders / berry bushes
+  const bld = await page.evaluate(() => ({ spr: ['townhall', 'archer', 'magetower', 'cannon', 'goldmine', 'lumbercamp', 'storage', 'barracks', 'shrine'].every(t => [1, 2, 3].every(L => BART.get(t, L, 0).sprite)), wild: Life.props.filter(p => p.wild).length }));
+  check('buildings draw from the sprite atlas, wild props scattered', bld.spr && bld.wild > 20, JSON.stringify(bld));
 
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();

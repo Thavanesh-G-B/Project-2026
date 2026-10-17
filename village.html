@@ -58,6 +58,19 @@
   .toolbar button:disabled { opacity: .5; cursor: default; }
   #tStrike::after { content: ""; position: absolute; left: 0; bottom: 0; height: 100%; width: var(--cd, 0%); background: rgba(0,0,0,.35); }
   .toolbar button span { position: relative; z-index: 1; }
+  /* hero / enemy panel */
+  .info { height: 190px; }
+  .hp { display: grid; grid-template-columns: 250px minmax(0, 1fr) 300px; gap: 4px 22px; align-items: start; }
+  .hp-id { display: flex; gap: 12px; align-items: center; } .portrait { width: 56px; height: 76px; flex: none; border-radius: 10px; background-color: #22404a; background-repeat: no-repeat; border: 1px solid var(--line); box-shadow: inset 0 0 12px rgba(0,0,0,.4); }
+  .hname { font: 600 18px var(--serif); line-height: 1.15; } .hname small { display: block; font: 11px var(--mono); color: var(--gold); letter-spacing: 1px; text-transform: uppercase; margin-top: 3px; }
+  .hstate { font: 12px var(--mono); color: var(--mute); margin-top: 4px; }
+  .hbars { display: grid; grid-template-columns: 24px 1fr 68px; gap: 4px 8px; align-items: center; margin-top: 8px; font: 11px var(--mono); color: var(--mute); text-transform: uppercase; } .hbars b { color: var(--ink); text-align: right; font-weight: 500; text-transform: none; }
+  .hbars .hbar { height: 10px; } .hbar.mana i.fill { background: linear-gradient(#d6c8ff,#7a62e0 55%,#3a2a9a); }
+  .hmid { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .hstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 16px; font: 12px var(--mono); } .hstats div { display: flex; flex-direction: column; } .hstats span { color: var(--mute); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; } .hstats b { color: var(--ink); font-weight: 500; }
+  .hacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .hacts .btn { padding: 5px 8px; font-size: 12px; text-align: left; display: flex; flex-direction: column; line-height: 1.25; } .hacts .btn kbd { font: 10px var(--mono); opacity: .65; margin-left: 4px; } .hacts .btn.off { opacity: .45; } .hacts .btn .cost { margin-top: 2px; align-self: flex-start; font-size: 10px; padding: 1px 6px; }
+  .htargets { display: flex; flex-wrap: wrap; gap: 6px; font: 11px var(--mono); } .htargets .tg { display: flex; align-items: center; gap: 6px; background: #1b333a; border: 1px solid var(--line); border-radius: 8px; padding: 2px 3px 2px 8px; } .htargets .tg .hbar { width: 40px; height: 7px; } .htargets .tg button { padding: 1px 8px; font-size: 11px; border-radius: 6px; background: #5a2a24; border: 1px solid #a4503f; color: #ffd8cf; } .htargets .tg.on { border-color: #e0705a; }
+  .btn.red { background: #6a2a24; border-color: #b4604f; color: #ffe2d8; }
   .info { padding: 12px 18px; border-top: 1px solid var(--line); height: 132px; overflow: auto; background: var(--panel); color: #d4e0da; }
   .info p { margin: 0 0 6px; } .info .stats { color: var(--mute); font: 12px var(--mono); }
   .selhead { font-size: 15px; margin-bottom: 4px; } .selhead .lv { font: 11px var(--mono); color: var(--gold); margin-left: 8px; letter-spacing: 1px; text-transform: uppercase; }
@@ -119,6 +132,7 @@
       <div class="chip hud" id="chipHp">
         <div class="row"><span class="lab">Hall</span><span class="hbar hall" id="barHall"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHall">0</span></div>
         <div class="row"><span class="lab">Hero</span><span class="hbar hero" id="barHero"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHero">0</span></div>
+        <div class="row"><span class="lab">Mana</span><span class="hbar mana" id="barMana"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numMana">0</span></div>
         <div class="row"><span class="lab">XP</span><span class="hbar xp" id="barXp"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numXp">Lv 1</span></div>
         <div class="row" id="rowRaid" style="display:none"><span class="lab">Raid</span><span class="hbar raid" id="barRaid"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numRaid">0</span></div>
       </div>
@@ -133,6 +147,7 @@
       <button id="tGather"><span>⌾ Gather tree</span></button>
       <button id="tShop" class="pri"><span>◉ Village shop</span></button>
       <button id="tExpand"><span>☁ Expand map</span></button>
+      <button id="tHero"><span>Hero</span></button>
       <button id="tStrike"><span>Hero strike</span></button>
       <button id="tRaid" class="pri">Start raid 1</button>
     </div>
@@ -160,6 +175,7 @@
 
 <script src="assets/sprites/atlas.js"></script>
 <script src="assets/sprites/hero.js"></script>
+<script src="assets/sprites/bld.js"></script>
 <script src="js/sfx.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/armor.js"></script>

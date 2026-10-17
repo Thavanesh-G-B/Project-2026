@@ -65,10 +65,28 @@ function drawBuilding(b, t) {
     return;
   }
   const shake = b.flash > 0 ? (Math.random() - 0.5) * 3 : 0;
-  ctx.drawImage(s.canvas, cx - s.ox + shake, cy - s.oy);
-  if (b.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; ctx.drawImage(s.canvas, cx - s.ox + shake, cy - s.oy); ctx.restore(); }
+  // artillery faces its target: the sprite is mirrored towards the side the target is on, and kicks back when it fires
+  const art = b.type === 'cannon' || b.type === 'mortar', flip = art && (Math.cos(b.aim || 0) - Math.sin(b.aim || 0)) > 0, kick = art ? (b.recoil || 0) * 14 * (flip ? -1 : 1) : 0;
+  const blit = (alpha) => {
+    ctx.save(); if (alpha) ctx.globalAlpha = alpha;
+    if (flip) { ctx.translate(cx, 0); ctx.scale(-1, 1); ctx.drawImage(s.canvas, -s.ox + kick * -1 + shake, cy - s.oy); }
+    else ctx.drawImage(s.canvas, cx - s.ox - kick + shake, cy - s.oy);
+    ctx.restore();
+  };
+  blit();
+  if (b.flash > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; blit(0.35); ctx.restore(); }
+  if (art && b.recoil > 0) {                      // muzzle flash at the barrel end
+    const mx = cx + (flip ? 1 : -1) * s.canvas.width * 0.3, my = cy - s.oy + s.canvas.height * 0.36, k = b.recoil * 3.4;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; const gr = ctx.createRadialGradient(mx, my, 1, mx, my, 26);
+    gr.addColorStop(0, `rgba(255,236,160,${clamp(k, 0, 1)})`); gr.addColorStop(1, 'rgba(255,140,40,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(mx, my, 26, 0, 6.283); ctx.fill(); ctx.restore();
+  }
+  if (b.level > 1 && d.kind !== 'decor' && d.kind !== 'wall' && d.kind !== 'trap' && BSPR[b.type]) {      // level stars above the roof
+    const sy = cy - s.oy + 2, n = b.level;
+    ctx.save(); ctx.font = 'bold 12px Georgia, serif'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(30,20,8,.85)';
+    const str = '★'.repeat(n); ctx.strokeText(str, cx, sy); ctx.fillStyle = n === 3 ? '#ffd95a' : '#e8e8f4'; ctx.fillText(str, cx, sy); ctx.restore();
+  }
   if (s.flag) drawFlag(cx + s.flag.x, cy + s.flag.y, s.flag.h, s.flag.color, t);
-  if (b.type === 'cannon' || b.type === 'mortar') {
+  if (s.turret && (b.type === 'cannon' || b.type === 'mortar')) {
     const a = b.aim, sx = (Math.cos(a) - Math.sin(a)) * TW / 2, sy = (Math.cos(a) + Math.sin(a)) * TH / 2, l = Math.hypot(sx, sy), ux = sx / l, uy = sy / l;
     const mort = b.type === 'mortar', bx = cx, by = cy + s.turret.y, rec = (b.recoil || 0) * 20, len = (mort ? 15 : 26) - rec * (mort ? 0.5 : 1);
     ctx.lineCap = 'round'; ctx.strokeStyle = '#1c1c22'; ctx.lineWidth = mort ? 17 : 12; ctx.beginPath(); ctx.moveTo(bx - ux * 6, by - uy * 6); ctx.lineTo(bx + ux * len, by + uy * len); ctx.stroke();
@@ -163,7 +181,7 @@ function nameTag(x, y, text, color) {
 }
 
 // ---------------------------------------------------------------- people (one pixel-art character, eight facings)
-const heroTier = () => Math.min(3, Math.floor((V.heroLevel - 1) / 4));
+const heroTier = () => heroTierNow();
 // facing on screen: 0 = towards the camera, PI/2 = screen-right, PI = away, -PI/2 = screen-left
 function yawOf(u) { const f = u.fdir || { x: 0.7, y: 0.7 }; return Math.atan2(f.x - f.y, f.x + f.y); }
 function turnTo(u, target, rate) {
@@ -183,6 +201,11 @@ function swordArc(x, y, side, u) {
   }
   ctx.restore();
 }
+function unitRing(x, y, rx, color, pulse) {
+  const p = 0.5 + 0.5 * Math.sin(UI.time * 5);
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.65 + 0.35 * p; ctx.beginPath(); ctx.ellipse(x, y, rx, rx * 0.5, 0, 0, 6.283); ctx.stroke();
+  ctx.globalAlpha = 0.12 + 0.08 * p; ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
 function drawHero(h, t) {
   const x = isoX(h.i, h.j), y = isoY(h.i, h.j) + 2, S = 1.0;
   const moving = (h.path && h.path.length > 0) || h.kbMove, yaw = turnTo(h, yawOf(h), 14);
@@ -194,14 +217,21 @@ function drawHero(h, t) {
     o.kind = 'dead'; o.deadT = Math.max(0, 12 - h.respawn); o.alpha = 0.95; Hero.draw(ctx, o); return;
   }
   shadowAt(x, y, 15, 6.5, 0.3);
+  if (V.selHero) unitRing(x, y, 24, '#ffe08a');
   if (h.hurt > 0) { o.kind = 'hurt'; o.flash = 'rgba(255,50,40,.45)'; }
-  else if (h.strikeT >= 0) { o.kind = 'strike'; o.u = h.strikeT / 0.4; }
+  else if (h.strikeT >= 0) { o.kind = 'strike'; o.u = clamp(h.strikeT / 0.5, 0, 1); }
   else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
   else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
   else if (moving) { o.kind = 'walk'; o.ph = h.walkT * 7.05; }
   Hero.draw(ctx, o);
   if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
-  if (o.kind === 'strike') { ctx.save(); ctx.strokeStyle = `rgba(190,235,255,${0.7 * (1 - o.u)})`; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(x, y - 12, 30 + o.u * 36, 14 + o.u * 16, 0, 0, 6.283); ctx.stroke(); ctx.restore(); }
+  if (o.kind === 'strike') {                                 // charge: light gathers on the raised blade; slam: ground flash
+    const side = Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    if (o.u < 0.45) { const k = o.u / 0.45, gx = x + side * 6, gy = y - 74, r = 10 + k * 26; const gr = ctx.createRadialGradient(gx, gy, 1, gx, gy, r); gr.addColorStop(0, `rgba(210,240,255,${0.5 + 0.4 * k})`); gr.addColorStop(1, 'rgba(120,190,255,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(gx, gy, r, 0, 6.283); ctx.fill(); }
+    else { const k = clamp((o.u - 0.4) / 0.4, 0, 1); ctx.strokeStyle = `rgba(190,235,255,${0.8 * (1 - k)})`; ctx.lineWidth = 5 * (1 - k) + 1; ctx.beginPath(); ctx.ellipse(x, y - 2, 20 + k * 90, 9 + k * 40, 0, 0, 6.283); ctx.stroke(); const gr = ctx.createRadialGradient(x, y - 2, 2, x, y - 2, 60 * (0.4 + k)); gr.addColorStop(0, `rgba(220,245,255,${0.45 * (1 - k)})`); gr.addColorStop(1, 'rgba(120,190,255,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.ellipse(x, y - 2, 60 * (0.4 + k), 30 * (0.4 + k), 0, 0, 6.283); ctx.fill(); }
+    ctx.restore();
+  }
   drawBar(x, y - 74, 36, h.hp / h.maxHp, { ent: h, h: 6, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
   nameTag(x, y - 80, 'Lv ' + V.heroLevel);
 }
@@ -245,6 +275,11 @@ function drawEnemy(e, t) {
   const x = isoX(e.i, e.j), y = isoY(e.i, e.j) + 2;
   const hover = e.flying && !e.dying ? 26 + Math.sin(e.hover * 3) * 3 : 0;
   shadowAt(x, y, e.boss ? 20 : 12, e.boss ? 9 : 5, e.flying ? 0.18 : 0.3);
+  if (V.selEnemy === e) unitRing(x, y, e.boss ? 34 : 20, '#ff8a70');
+  if (V.hero && V.hero.order && V.hero.order.type === 'attack' && V.hero.order.e === e && !e.dying) {     // the hero's current target
+    const k = 0.5 + 0.5 * Math.sin(UI.time * 8), yy = y - hover - (e.boss ? 100 : 62) - k * 3;
+    ctx.save(); ctx.fillStyle = '#ff5a40'; ctx.strokeStyle = 'rgba(40,10,6,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 7, yy - 9); ctx.lineTo(x + 7, yy - 9); ctx.lineTo(x, yy); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
+  }
   const [grp, idx] = enemyFrame(e);
   ctx.save();
   if (e.dying && e.d.g.die == null) ctx.globalAlpha = Math.max(0, 1 - e.dieT / 0.7);
@@ -342,7 +377,7 @@ function render(ts) {
     L.push({ k: b.i + b.j + b.w + b.d - 0.2 + (b.state === 'ruin' ? -1 : 0), f: () => drawBuilding(b, t) });
   }
   if (lifeOn) {
-    for (const p of Life.props) if (Life.propLive(p) && Math.abs(isoX(p.i, p.j) - UI.cam.x) < UI.W / z / 2 + 200) L.push({ k: p.i + p.j + (p.type === 'well' ? 2 : 1), f: () => Life.drawProp(ctx, p, t) });
+    for (const p of Life.props) if ((!p.wild || Terr.has(p.i, p.j)) && Math.abs(isoX(p.i, p.j) - UI.cam.x) < UI.W / z / 2 + 200 && Math.abs(isoY(p.i, p.j) - UI.cam.y) < UI.H / z / 2 + 200 && Life.propLive(p)) L.push({ k: p.i + p.j + (p.type === 'well' ? 2 : 1), f: () => Life.drawProp(ctx, p, t) });
     for (const v of V.villagers) if (!v.hidden) L.push({ k: unitDepth(v.i, v.j), f: () => Life.drawVillager(ctx, v, t) });
   }
   if (V.hero) L.push({ k: unitDepth(V.hero.i, V.hero.j), f: () => drawHero(V.hero, t) });

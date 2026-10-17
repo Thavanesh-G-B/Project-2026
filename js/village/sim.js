@@ -4,7 +4,7 @@ const SAVE_KEY = 'ashen-hollow-village-v1';
 
 const V = {
   seed: 1, res: { gold: 300, wood: 200 }, buildings: [], trees: [], occ: new Int16Array(GN * GN),
-  hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
+  uidn: 0, selHero: false, selEnemy: null, hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
   heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
   cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
@@ -221,18 +221,19 @@ function followPath(u, dt, speed) {
 function faceFrom(u) { if (u.dir) { u.fdir = { x: u.dir.x, y: u.dir.y }; const sx = (u.dir.x - u.dir.y); if (Math.abs(sx) > 0.05) u.face = sx > 0 ? 1 : -1; } }
 
 // ---------------------------------------------------------------- hero
-const heroStats = () => ({ maxHp: HERO_DEF.hp + (V.heroLevel - 1) * 25, dmg: HERO_DEF.dmg + (V.heroLevel - 1) * 3 });
+const heroTierNow = () => Math.min(3, Math.floor((V.heroLevel - 1) / 4));
+const heroStats = () => ({ maxHp: HERO_DEF.hp + (V.heroLevel - 1) * 25, dmg: HERO_DEF.dmg + (V.heroLevel - 1) * 3, maxMana: HERO_DEF.mana + (V.heroLevel - 1) * 10, red: HERO_DEF.armorRed[heroTierNow()] });
 function spawnHero() {
   const hall = V.buildings.find(b => b.type === 'townhall');
   const s = heroStats();
   V.hero = { i: hall.i + 1.5, j: hall.j + hall.d + 0.7, hp: s.maxHp, maxHp: s.maxHp, face: 1, dir: null, path: [], order: null, atk: -1, atkHit: false, strikeCd: 0, strikeT: -1,
-    dead: false, respawn: 0, chop: 0, hits: 0, anim: 0, walkT: 0, inv: 0, hurt: 0, fdir: { x: 0.7, y: 0.7 }, yaw: 0, lastStep: 0, chopping: false };
+    dead: false, respawn: 0, mana: s.maxMana, maxMana: s.maxMana, healCd: 0, stance: 'aggressive', hero_kills: 0, chop: 0, hits: 0, anim: 0, walkT: 0, inv: 0, hurt: 0, fdir: { x: 0.7, y: 0.7 }, yaw: 0, lastStep: 0, chopping: false };
 }
 function gainXp(n) {
   V.heroXp += n;
   while (V.heroXp >= 24 * V.heroLevel && V.heroLevel < 20) {
     V.heroXp -= 24 * V.heroLevel; V.heroLevel++;
-    const s = heroStats(); V.hero.maxHp = s.maxHp; V.hero.hp = s.maxHp;
+    const s = heroStats(); V.hero.maxHp = s.maxHp; V.hero.hp = s.maxHp; V.hero.maxMana = s.maxMana; V.hero.mana = s.maxMana;
     toast(`Hero reached level ${V.heroLevel}!`); Sfx.play('power');
     floatText(V.hero.i, V.hero.j, 70, 'LEVEL UP', '#ffe08a');
   }
@@ -249,21 +250,46 @@ function orderChop(t) {
   h.order = { type: 'chop', t }; h.path = pathToTree(h, t) || []; h.chop = 0; h.hits = 0;
   if (!h.path.length && !(Math.abs(tileOf(h.i) - t.i) <= 1 && Math.abs(tileOf(h.j) - t.j) <= 1)) { h.order = null; toast("The hero can't reach that tree."); }
 }
+// Hero strike: the hero raises the sword (charge), then slams it down; the shockwave lands at the moment of impact.
 function heroStrike() {
   const h = V.hero;
-  if (!h || h.dead || h.strikeCd > 0) { if (h && h.strikeCd > 0) Sfx.play('deny'); return false; }
-  h.strikeCd = HERO_DEF.strikeCd; h.strikeT = 0; h.inv = 0.5; h.atk = -1;
+  if (!h || h.dead || h.strikeT >= 0) return false;
+  if (h.strikeCd > 0) { Sfx.play('deny'); return false; }
+  if (h.mana < HERO_DEF.strikeMana) { Sfx.play('deny'); toast('Not enough mana.'); return false; }
+  h.mana -= HERO_DEF.strikeMana; h.strikeCd = HERO_DEF.strikeCd; h.strikeT = 0; h.strikePending = true; h.inv = 0.5; h.atk = -1; h.path = []; h.order = null;
+  sfxAt('charge', h.i, h.j);
+  return true;
+}
+function strikeImpact() {
+  const h = V.hero; h.strikePending = false;
   const dmg = heroStats().dmg * HERO_DEF.strikeDmg;
-  sfxAt('strike', h.i, h.j); V.shake = Math.max(V.shake, 5);
+  sfxAt('strike', h.i, h.j); V.shake = Math.max(V.shake, 6);
   V.rings.push({ i: h.i, j: h.j, r: 0.3, max: HERO_DEF.strikeRadius, t: 0 });
-  burst(h.i, h.j, 24, ['#bfe8ff', '#ffffff', '#ffe9a0'], 190, 0.6, 20);
+  burst(h.i, h.j, 28, ['#bfe8ff', '#ffffff', '#ffe9a0'], 200, 0.6, 20);
   V.hitstop = Math.max(V.hitstop, 0.07);
   for (const e of V.enemies) if (!e.dying && Math.hypot(e.i - h.i, e.j - h.j) <= HERO_DEF.strikeRadius) {
     e.hurt(dmg, 'hero');
     const d = Math.hypot(e.i - h.i, e.j - h.j) || 1; e.kx = (e.i - h.i) / d * 3.5; e.ky = (e.j - h.j) / d * 3.5; e.stun = 0.45;
   }
+}
+// Second Wind: a quick self-heal
+function heroHeal() {
+  const h = V.hero;
+  if (!h || h.dead) return false;
+  if (h.healCd > 0) { Sfx.play('deny'); toast(`Second Wind is recharging (${Math.ceil(h.healCd)}s).`); return false; }
+  if (h.mana < HERO_DEF.healMana) { Sfx.play('deny'); toast('Not enough mana.'); return false; }
+  if (h.hp >= h.maxHp) { Sfx.play('deny'); toast('Your hero is already at full health.'); return false; }
+  h.mana -= HERO_DEF.healMana; h.healCd = HERO_DEF.healCd;
+  const n = Math.round(h.maxHp * HERO_DEF.healPct); h.hp = Math.min(h.maxHp, h.hp + n);
+  floatText(h.i, h.j, 70, '+' + n, '#9cffb0'); sfxAt('heal', h.i, h.j);
+  V.rings.push({ i: h.i, j: h.j, r: 0.2, max: 1.4, t: 0, green: true });
+  burst(h.i, h.j, 16, ['#bfffcf', '#ffffff', '#7be08a'], 60, 0.9, 40);
   return true;
 }
+function heroStop() { const h = V.hero; if (h && !h.dead) { h.order = null; h.path = []; h.chop = 0; h.hits = 0; } }
+function heroHome() { const h = V.hero, hall = V.buildings.find(b => b.type === 'townhall'); if (h && !h.dead && hall) orderMove(hall.i + 1.5, hall.j + hall.d + 0.7); }
+const STANCES = ['aggressive', 'defensive', 'hold'];
+function cycleStance() { const h = V.hero; if (!h) return; h.stance = STANCES[(STANCES.indexOf(h.stance) + 1) % STANCES.length]; Sfx.play('click'); return h.stance; }
 function nearestEnemy(i, j, r, groundOnly) {
   let best = null, bd = r;
   for (const e of V.enemies) { if (e.dying || !Terr.has(e.i, e.j)) continue; /* enemies hidden in the clouds are out of reach */ const d = Math.hypot(e.i - i, e.j - j); if (d < bd) { bd = d; best = e; } }
@@ -273,13 +299,15 @@ function updateHero(dt) {
   const h = V.hero; if (!h) return;
   h.anim += dt; h.inv = Math.max(0, h.inv - dt); h.hurt = Math.max(0, h.hurt - dt); h.strikeCd = Math.max(0, h.strikeCd - dt);
   const st = heroStats();
+  h.maxMana = st.maxMana; h.healCd = Math.max(0, (h.healCd || 0) - dt);
+  if (!h.dead) h.mana = Math.min(h.maxMana, h.mana + dt * HERO_DEF.manaRegen * (V.raid.active ? 1 : 1.8));
   if (h.dead) {
     h.respawn -= dt;
     if (h.respawn <= 0) { const hall = V.buildings.find(b => b.type === 'townhall'); h.dead = false; h.hp = st.maxHp; h.i = hall.i + 1.5; h.j = hall.j + hall.d + 0.7; h.order = null; toast('Your hero has returned.'); }
     return;
   }
   if (V.raid.active || h.hp < h.maxHp) h.hp = Math.min(h.maxHp, h.hp + dt * (V.raid.active ? 1.5 : 6));
-  if (h.strikeT >= 0) { h.strikeT += dt; if (h.strikeT > 0.4) h.strikeT = -1; }
+  if (h.strikeT >= 0) { h.strikeT += dt; if (h.strikePending && h.strikeT >= 0.2) strikeImpact(); if (h.strikeT > 0.5) h.strikeT = -1; }
   const o = h.order;
   // swing timeline
   h.chopping = false;
@@ -290,7 +318,7 @@ function updateHero(dt) {
       const t = h.atkTarget;
       const tgt = t && !t.dying ? t : nearestEnemy(h.i, h.j, HERO_DEF.range + 0.4);
       if (tgt && Math.hypot(tgt.i - h.i, tgt.j - h.j) <= HERO_DEF.range + 0.6) {
-        tgt.hurt(st.dmg, 'hero'); sfxAt('hit', tgt.i, tgt.j); V.hitstop = Math.max(V.hitstop, 0.05); V.shake = Math.max(V.shake, 2.5);
+        tgt.hurt(st.dmg, 'hero'); sfxAt('hit', tgt.i, tgt.j); if (tgt.type === 'knight' || tgt.type === 'skeleton') sfxAt('clang', tgt.i, tgt.j); V.hitstop = Math.max(V.hitstop, 0.05); V.shake = Math.max(V.shake, 2.5);
         burst(tgt.i, tgt.j, 9, ['#ffffff', '#ffe9a0', '#ffb060'], 120, 0.3, 20);
         const dx = tgt.i - h.i, dy = tgt.j - h.j, l = Math.hypot(dx, dy) || 1; if (!tgt.boss) { tgt.kx = dx / l * 1.6; tgt.ky = dy / l * 1.6; tgt.stun = Math.max(tgt.stun, 0.12); }
         V.slashFx.push({ i: tgt.i, j: tgt.j, t: 0, a: Math.atan2((dx - dy), (dx + dy) * 0.5) });
@@ -333,13 +361,14 @@ function updateHero(dt) {
     if (!moving) h.order = null;
   } else {
     // idle: engage anything that comes close
-    const e = nearestEnemy(h.i, h.j, V.raid.active ? 80 : 3.2);   // during a raid the idle hero hunts
+    const reach = h.stance === 'hold' ? 1.4 : h.stance === 'defensive' ? 4.5 : V.raid.active ? 80 : 3.2;
+    const e = nearestEnemy(h.i, h.j, reach);   // aggressive: during a raid the idle hero hunts; defensive: only what comes near; hold: only what is in reach
     if (e) { h.order = { type: 'attack', e, auto: true }; }
   }
   if (moving) {
     h.walkT += dt * 1.6; if (!kb) faceFrom(h);
     const step = Math.floor(h.walkT * 7.05 / Math.PI);                  // a footfall every half stride
-    if (step !== h.lastStep) { h.lastStep = step; sfxAt('step', h.i, h.j); if (Math.random() < 0.5) V.parts.push({ x: isoX(h.i, h.j), y: isoY(h.i, h.j) + 2, vx: rnd(-8, 8), vy: -10, life: 0.5, max: 0.5, c: 'rgba(190,170,130,.55)', s: 3, g: -10 }); }
+    if (step !== h.lastStep) { h.lastStep = step; sfxAt({ stone: 'stepStone', dirt: 'stepDirt', grass: 'step' }[typeof Life !== 'undefined' ? Life.surfaceAt(h.i, h.j) : 'grass'], h.i, h.j); if (Math.random() < 0.5) V.parts.push({ x: isoX(h.i, h.j), y: isoY(h.i, h.j) + 2, vx: rnd(-8, 8), vy: -10, life: 0.5, max: 0.5, c: 'rgba(190,170,130,.55)', s: 3, g: -10 }); }
   }
 }
 // an axe lands on a tree: chips, shake and a thunk; the third hit fells it
@@ -431,7 +460,7 @@ class Enemy {
   }
   die(src) {
     this.dying = true; this.dieT = 0; this.atk = -1;
-    V.kills++; V.raid.killed++;
+    V.kills++; V.raid.killed++; if (src === 'hero' && V.hero) V.hero.hero_kills++;
     const g = addRes('gold', this.d.gold);
     if (this.d.gold) floatText(this.i, this.j, 74, `+${this.d.gold}`, '#ffd966');
     if (this.boss) { addRes('wood', 40); burst(this.i, this.j, 30, ['#a060ff', '#ffe08a'], 160, 1, 20); V.shake = 12; }
@@ -544,6 +573,7 @@ class Enemy {
 function hurtUnit(u, dmg) {
   if (u === V.hero) {
     if (u.dead || u.inv > 0) return;
+    dmg *= 1 - heroStats().red;
     u.hp -= dmg; u.hurt = 0.25; u.inv = 0.25; floatText(u.i, u.j, 60, '-' + Math.round(dmg), '#ff6666'); sfxAt('hurt', u.i, u.j);
     if (u.hp <= 0) { u.hp = 0; u.dead = true; u.respawn = 12; u.order = null; u.atk = -1; toast('Your hero has fallen. Respawning at the Town Hall...'); sfxAt('die', u.i, u.j); }
   } else { u.hp -= dmg; floatText(u.i, u.j, 50, '-' + Math.round(dmg), '#ff9a6a'); }
@@ -733,7 +763,7 @@ function layoutTrees(removed) {
 }
 function newVillage() {
   V.seed = 1 + Math.floor(Math.random() * 1e6);
-  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, paused: false });
+  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, selHero: false, selEnemy: null, paused: false });
   V.raid = { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 };
   Terr.level = 1;
   Ground.build(V.seed); layoutTrees();
@@ -783,7 +813,7 @@ function loadGame() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { s = null; }
   if (!s || !s.b || !s.b.some(b => b.type === 'townhall' && b.state !== 'ruin')) return false;
-  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, paused: false, seed: s.seed });
+  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, selHero: false, selEnemy: null, paused: false, seed: s.seed });
   V.raid = { n: s.raid || 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: s.best || 0 };
   Terr.level = clamp(s.terr || 1, 1, TERR_R.length);
   Ground.build(V.seed); layoutTrees(s.removed);

@@ -46,14 +46,17 @@ const Life = {
     }
     // soften the plaza edge into the meadow: darken a thin outline of the outer tiles
     this.plaza = { canvas: c, x: x0, y: y0 };
+    this.plazaSet = new Set(); for (let i = i0; i < i1; i++) for (let j = j0; j < j1; j++) if (inGrid(i, j) && inside(i, j)) this.plazaSet.add(i + ',' + j);
   },
+
+  surfaceAt(i, j) { const ti = Math.floor(i), tj = Math.floor(j); return this.plazaSet && this.plazaSet.has(ti + ',' + tj) ? 'stone' : isRoad(ti, tj) ? 'dirt' : 'grass'; },
 
   // ---------------------------------------------------------------- props
   makeProps(hall) {
     const list = [], seed = V.seed, cx = hall.i + hall.w / 2, cy = hall.j + hall.d / 2;
     const taken = new Set();
-    const free = (i, j) => inGrid(i, j) && occAt(i, j) === 0 && !isRoad(i, j) && !taken.has(i + ',' + j) && Terr.has(i, j);
-    const place = (type, i, j, extra) => { if (!free(i, j)) return false; taken.add(i + ',' + j); list.push(Object.assign({ type, i, j, v: Math.floor(vhash(i, j, seed + 71) * 3), ph: vhash(i, j, seed + 72) * 6.28 }, extra)); return true; };
+    const free = (i, j, wild) => inGrid(i, j) && occAt(i, j) === 0 && !isRoad(i, j) && !taken.has(i + ',' + j) && (wild || Terr.has(i, j));
+    const place = (type, i, j, extra) => { if (!free(i, j, extra && extra.wild)) return false; taken.add(i + ',' + j); list.push(Object.assign({ type, i, j, v: Math.floor(vhash(i, j, seed + 71) * 3), ph: vhash(i, j, seed + 72) * 6.28 }, extra)); return true; };
     const ring = (n, r0, r1, f) => { let got = 0; for (let k = 0; k < 160 && got < n; k++) { const a = vhash(k, 1, seed + 73) * 6.283, r = r0 + vhash(k, 2, seed + 73) * (r1 - r0); if (f(Math.floor(cx + Math.cos(a) * r), Math.floor(cy + Math.sin(a) * r), got)) got++; } };
     ring(1, 4.2, 6.5, (i, j) => free(i, j) && free(i + 1, j) && free(i, j + 1) && free(i + 1, j + 1) && (taken.add((i + 1) + ',' + j), taken.add(i + ',' + (j + 1)), taken.add((i + 1) + ',' + (j + 1)), place('well', i, j)));
     ring(1, 3.4, 6.8, (i, j) => place('campfire', i, j));
@@ -63,6 +66,13 @@ const Life = {
     ring(1, 3, 6, (i, j) => place('sign', i, j));
     ring(8, 4, 12, (i, j) => place('bush', i, j));
     ring(3, 3, 7.5, (i, j) => place('torch', i, j));
+    // wild scatter over the whole island: boulders, berry bushes and stumps, thicker near the forest
+    for (let i = 2; i < GN - 2; i++) for (let j = 2; j < GN - 2; j++) {
+      if (Math.hypot(i - cx, j - cy) < 5.5 || occAt(i, j) !== 0 || isRoad(i, j)) continue;
+      const h = vhash(i, j, seed + 81), forest = smoothstep(7, 18, Math.max(Math.abs(i - MID), Math.abs(j - MID)));
+      const type = h < 0.01 + forest * 0.012 ? 'boulder' : h < 0.026 + forest * 0.02 ? 'berry' : h < 0.034 + forest * 0.014 ? 'stump' : null;
+      if (type && !taken.has(i + ',' + j)) place(type, i, j, { wild: true });
+    }
     this.props = list.sort((a, b) => (a.i + a.j) - (b.i + b.j));
   },
   // props vanish when a building is placed on top of them
@@ -94,6 +104,12 @@ const Life = {
         const g = ctx.createRadialGradient(x - 5, y - 18, 2, x, y - 10, 20); g.addColorStop(0, '#f0dc8a'); g.addColorStop(0.6, '#d4b45a'); g.addColorStop(1, '#8a6c2c');
         ctx.fillStyle = g; ctx.strokeStyle = OL; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 16, y); ctx.quadraticCurveTo(x - 17, y - 16, x - 3, y - 25); ctx.quadraticCurveTo(x + 14, y - 22, x + 16, y - 2); ctx.quadraticCurveTo(x, y + 4, x - 16, y); ctx.fill(); ctx.stroke();
         ctx.strokeStyle = 'rgba(120,88,30,.7)'; ctx.lineWidth = 1; for (let k = 0; k < 9; k++) { const a = -12 + k * 3.2; ctx.beginPath(); ctx.moveTo(x + a, y - 3 - (k % 3) * 4); ctx.lineTo(x + a + 2, y - 11 - (k % 4) * 3); ctx.stroke(); }
+        break; }
+      case 'boulder': case 'berry': case 'stump': {
+        const key = p.type === 'boulder' ? 'boulders' : p.type === 'berry' ? 'berry' : 'stumps', F = BLD.f(key), sc = (p.type === 'boulder' ? 0.62 : p.type === 'berry' ? 0.62 : 0.42) * (0.9 + p.v * 0.12);
+        const fl = p.v === 1; sh(F[2] * sc * 0.42, F[2] * sc * 0.16, 0.22);
+        ctx.translate(x, y + 4); if (fl) ctx.scale(-1, 1);
+        ctx.drawImage(BLD.img, F[0], F[1], F[2], F[3], -F[2] * sc / 2, -F[3] * sc, F[2] * sc, F[3] * sc);
         break; }
       case 'bush': {
         sh(14, 5.5, 0.22); const cols = [['#5f8f46', '#3f6c32'], ['#6aa04c', '#46763a'], ['#7a9c44', '#52702e']][p.v];
@@ -182,6 +198,12 @@ const Life = {
     // the light follows the raid
     const target = V.raid.active ? 1 : 0; this.dusk += (target - this.dusk) * Math.min(1, dt * 0.7);
     this.updateVillagers(dt);
+    this.envT = (this.envT || 0) - dt;
+    if (this.envT <= 0 && typeof UI !== 'undefined') {          // ambience hints for the sound engine: is a campfire near the camera?
+      this.envT = 0.6; const ci = unIso(UI.cam.x, UI.cam.y);
+      let near = 0; for (const p of this.props) if (p.type === 'campfire' && this.propLive(p)) near = Math.max(near, clamp(1 - Math.hypot(p.i - ci.i, p.j - ci.j) / 14, 0, 1));
+      Sfx.env.fire = near;
+    }
     for (const b of this.butter) { b.a += (Math.random() - 0.5) * dt * 6; b.i += Math.cos(b.a) * dt * 0.7; b.j += Math.sin(b.a) * dt * 0.7; if (Math.hypot(b.i - this.hall.i - 1.5, b.j - this.hall.j - 1.5) > 9) b.a = Math.atan2(this.hall.j + 1.5 - b.j, this.hall.i + 1.5 - b.i); }
     // campfire / torch glow sparks and smoke
     for (const p of this.props) if (p.type === 'campfire' && this.propLive(p) && Math.random() < dt * 4) this.smoke.push({ x: isoX(p.i + 0.5, p.j + 0.5) + rnd(-2, 2), y: isoY(p.i + 0.5, p.j + 0.5) - 14, vx: rnd(4, 9), vy: -rnd(16, 26), r: 3, life: 2.4, max: 2.4 });

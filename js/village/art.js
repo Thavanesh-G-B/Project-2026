@@ -89,8 +89,42 @@ const STONE = [128, 126, 116], STONE_D = [98, 98, 96], WOOD = [150, 106, 66], WO
 const TRIM = [[168, 120, 76], [168, 178, 196], [236, 192, 72]];     // per level: bronze, steel, gold
 const ROOFC = [[160, 82, 58], [74, 104, 140], [138, 52, 70]];
 
+// ---- reference-sheet sprites (tools/extract_buildings.py): every building that has one is drawn from the atlas.
+const BLD = {
+  img: null,
+  load() { return new Promise((res, rej) => { const i = new Image(); i.onload = () => { this.img = i; res(); }; i.onerror = () => rej(new Error('Could not load bld.png')); i.src = 'assets/sprites/bld.png'; }); },
+  f(k) { return window.BLD_ATLAS.frames[k]; },
+};
+// type -> per level [sprite, scale]; glow: [x fraction, y fraction from top, rgb]
+const BSPR = {
+  townhall:   { lv: [['hall_timber', 0.88], ['hall_stone', 1.22], ['hall_stone', 1.3]], lift: 0.18 },
+  barracks:   { lv: [['h_thatch', 0.72], ['h_thatch', 0.76], ['h_thatch', 0.8]], lift: 0.12 },
+  archer:     { lv: [['archer_a', 0.9], ['archer_b', 0.86], ['archer_c', 0.9]], lift: 0.14 },
+  magetower:  { lv: [['mage_a', 0.86], ['mage_b', 0.88], ['mage_c', 0.95]], lift: 0.14, glow: [0.5, 0.2, [120, 200, 255]] },
+  cannon:     { lv: [['cannon_a', 0.95], ['cannon_b', 0.86], ['cannon_b', 0.92]], lift: 0.12 },
+  mortar:     { lv: [['cannon_b', 0.82], ['cannon_b', 0.88], ['cannon_b', 0.94]], lift: 0.12 },
+  goldmine:   { lv: [['mine_gold', 0.95], ['mine_wood', 1.3], ['mine_rock', 1.4]], lift: 0.1 },
+  lumbercamp: { lv: [['lumber', 0.98], ['lumber', 1.05], ['lumber', 1.12]], lift: 0.1 },
+  storage:    { lv: [['farm', 0.96], ['farm', 1.02], ['farm', 1.08]], lift: 0.1 },
+  builderhut: { lv: [['house_b', 0.74]], lift: 0.12 },
+  shrine:     { lv: [['mage_spiral', 0.86], ['mage_spiral', 0.92], ['mage_spiral', 0.98]], lift: 0.14, glow: [0.5, 0.06, [130, 220, 255]] },
+};
+
 const BART = {
   cache: new Map(),
+  fromAtlas(type, L) {
+    const m = BSPR[type], [key, sc] = m.lv[Math.min(L, m.lv.length) - 1], F = BLD.f(key), def = BDEF[type];
+    const [fx, fy, fw, fh] = F, W = Math.ceil(fw * sc) + 24, H = Math.ceil(fh * sc) + 16;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    g.drawImage(BLD.img, fx, fy, fw, fh, 12, 4, fw * sc, fh * sc);
+    // ox: horizontal centre; oy: distance from the canvas top to the footprint centre. The sprite's bottom corner sits on the
+    // footprint's front corner (half a diamond below its centre), pulled in a little by `lift`.
+    const half = (def.w + def.d) * 8, front = half * (1 - (m.lift || 0));
+    const out = { canvas: c, ox: W / 2, oy: H - 4 - front, sprite: key };
+    if (m.glow) out.glow = { x: 0, y: -(H - 4 - front) + 4 + fh * sc * m.glow[1], color: m.glow[2] };
+    return out;
+  },
   // returns {canvas, ox, oy, flag?, turret?}; draw at (centreX - ox, centreY - oy)
   get(type, level, mask) {
     const key = type + level + (mask || 0);
@@ -108,6 +142,7 @@ const BART = {
     g.fillStyle = 'rgba(16,24,14,.2)'; g.beginPath(); g.ellipse(2, 3 + (w + d) * 2, (w + d) * 14, (w + d) * 6.5, 0, 0, 6.283); g.fill();
   },
   make(type, L, mask) {
+    if (BSPR[type] && BLD.img) return this.fromAtlas(type, L);
     const def = BDEF[type] || { w: 2, d: 2 };
     const up = type === 'townhall' ? 150 : (type === 'archer' || type === 'magetower') ? 130 : 96;
     const { c, g, ox, oy } = this.canvasFor(def.w, def.d, up);

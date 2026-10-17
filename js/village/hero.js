@@ -29,16 +29,15 @@ const Hero = {
         const n = this.count(this.DIRS[d] === 'NW' ? 'NE' : this.DIRS[d]);
         [name, flip] = walkFrame(d, Math.floor(((o.ph || 0) / 6.2832) * n));
         break; }
-      case 'attack': case 'chop': case 'work': case 'hurt': case 'dead': {
+      case 'attack': case 'chop': case 'work': case 'hurt': case 'dead': case 'strike': {
         const side = sideOf(); flip = side < 0;
         const u = clamp(o.u || 0, 0, 1);
         if (kind === 'attack') { name = u < 0.3 ? 'atk0' : u < 0.68 ? 'atk1' : 'atk2'; dx = side * (u > 0.3 && u < 0.68 ? 3 : 0); }
         else if (kind === 'chop' || kind === 'work') { name = u < 0.25 ? 'chop2' : u < 0.55 ? 'chop0' : u < 0.82 ? 'chop1' : 'chop2'; dy = name === 'chop1' ? 1 : 0; }
+        else if (kind === 'strike') { name = u < 0.4 ? 'atk2' : u < 0.8 ? 'atk1' : 'atk0'; dy = u < 0.4 ? -3 * Math.sin(u / 0.4 * 1.57) : 0; dx = side * (u >= 0.4 && u < 0.8 ? 2 : 0); }
         else if (kind === 'hurt') { [name] = walkFrame(1, 0); flip = side < 0; dx = -side * 3; }
         else { const t = o.deadT || 0; name = t < 0.3 ? 'stagger' : t < 0.7 ? 'dead0' : 'dead1'; }
         break; }
-      case 'strike': {                                           // spin through every direction, twice
-        const k = Math.floor((o.u || 0) * 16) % 8; [name, flip] = walkFrame(k, 0); break; }
       default: {
         [name, flip] = walkFrame(d, 0);
         dy = Math.sin((o.t || 0) * 2.2 + (o.ph || 0)) * 0.5 - 0.5;   // breathing

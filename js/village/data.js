@@ -9,7 +9,7 @@ const BDEF = {
   lumbercamp: { cat: 'Economy', name: 'Lumber Camp', w: 2, d: 2, kind: 'collector', res: 'wood', desc: 'Lumberjacks haul wood in. Tap it to collect.',
     hp: [300, 440, 640], rate: [0.7, 1.2, 1.8], store: [200, 360, 600],
     cost: [{ gold: 70 }, { gold: 140, wood: 60 }, { gold: 380, wood: 140 }], time: [6, 16, 34], max: [2, 3, 4] },
-  storage: { cat: 'Economy', name: 'Storage Vault', w: 2, d: 2, kind: 'storage', desc: 'Raises how much gold and wood your village can hold.',
+  storage: { cat: 'Economy', name: 'Storage Barn', w: 2, d: 2, kind: 'storage', desc: 'Raises how much gold and wood your village can hold.',
     hp: [500, 800, 1200], cap: [400, 800, 1400], cost: [{ gold: 120, wood: 120 }, { gold: 300, wood: 220 }, { gold: 700, wood: 480 }], time: [8, 20, 38], max: [1, 2, 3] },
   archer: { cat: 'Defense', name: 'Archer Tower', w: 2, d: 2, kind: 'defense', air: true, ground: true, desc: 'Fast arrows. Hits ground and flying enemies.',
     hp: [320, 480, 700], dmg: [9, 14, 22], range: 6.5, cd: 0.85, cost: [{ gold: 150, wood: 60 }, { gold: 300, wood: 100 }, { gold: 720, wood: 220 }], time: [10, 24, 44], max: [2, 4, 6] },
@@ -54,7 +54,7 @@ const EDATA = {
     g: { idle: 'king_idle', walk: 'king_move', beam: 'king_beam', summon: 'king_summon', hurt: 'king_hurt', die: 'king_die' } },
 };
 
-const HERO_DEF = { hp: 220, dmg: 18, speed: 3.2, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6 };
+const HERO_DEF = { name: 'Aldric', hp: 220, dmg: 18, speed: 3.2, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6, mana: 100, manaRegen: 3.5, strikeMana: 30, healMana: 45, healPct: 0.35, healCd: 20, armorRed: [0, 0.12, 0.22, 0.32], armorName: ['Cloth tunic', 'Iron armor', 'Gold armor', 'Crystal armor'], titles: ['Wanderer', 'Squire', 'Knight', 'Champion'] };
 
 const hallLevel = () => (V.buildings.find(b => b.type === 'townhall') || { level: 1 }).level;
 const maxCount = type => BDEF[type].max[hallLevel() - 1];
