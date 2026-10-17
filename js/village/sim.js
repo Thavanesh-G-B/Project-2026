@@ -197,7 +197,32 @@ function pathToBuilding(u, b, reach, walls) {   // enemies ignore the cloud boun
   const hf = (i, j) => rectDist(i + 0.5, j + 0.5, b);
   return findPath(tileOf(u.i), tileOf(u.j), (i, j) => tileCost(i, j, walls) !== Infinity && rectDist(i + 0.5, j + 0.5, b) <= reach, hf, walls, 4500, false);
 }
+// Tile-by-tile A* paths zig-zag (east, north-east, east, ...), which made walking units wiggle their facing. String-pulling keeps only the
+// corners that are really needed: each waypoint is the furthest one in clear sight (with a body's width of room) of the one before.
+function clearLine(ax, ay, bx, by, lock) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy), n = Math.max(1, Math.ceil(len / 0.2)), px = len ? -dy / len : 0, py = len ? dx / len : 0;
+  for (let k = 0; k <= n; k++) {
+    const x = ax + dx * k / n, y = ay + dy * k / n;
+    for (const o of [0, -0.28, 0.28]) if (tileCost(Math.floor(x + px * o), Math.floor(y + py * o), false, lock) === Infinity) return false;
+  }
+  return true;
+}
+function smoothPath(u, path, lock) {
+  if (!path || path.length < 2) return path;
+  const pts = [{ x: u.i, y: u.j }].concat(path.map(w => ({ x: w.i + 0.5, y: w.j + 0.5, i: w.i, j: w.j })));
+  const out = []; let cur = 0;
+  while (cur < pts.length - 1) {
+    let nxt = cur + 1;
+    for (let k = pts.length - 1; k > cur + 1; k--) if (clearLine(pts[cur].x, pts[cur].y, pts[k].x, pts[k].y, lock)) { nxt = k; break; }
+    out.push({ i: pts[nxt].i, j: pts[nxt].j }); cur = nxt;
+  }
+  return out;
+}
 function pathToTile(u, gi, gj) {                 // hero / guards stay inside the territory
+  const raw = pathToTileRaw(u, gi, gj);
+  return raw ? smoothPath(u, raw, true) : raw;
+}
+function pathToTileRaw(u, gi, gj) {
   const hf = (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj));
   return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false, 3500, true)
     || (tileCost(gi, gj, false, true) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true) : null);
@@ -212,10 +237,11 @@ function pathToTree(u, t) {
     if (spots.some(([i, j]) => i === si && j === sj)) return [];                       // already standing on a good spot
     let best = null;
     for (const [gi, gj] of spots) { const p = findPath(si, sj, (i, j) => i === gi && j === gj, (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)), false, 3500, true); if (p && (!best || p.length < best.length)) best = p; }
-    if (best) return best;
+    if (best) return smoothPath(u, best, true);
   }
   const hf = (i, j) => Math.max(Math.abs(i - t.i), Math.abs(j - t.j));
-  return findPath(si, sj, (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
+  const last = findPath(si, sj, (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
+  return last ? smoothPath(u, last, true) : last;
 }
 // move a unit along its path; returns true while still travelling
 function followPath(u, dt, speed) {
@@ -344,7 +370,7 @@ function updateHero(dt) {
   const inp = V.input, kb = !!(inp && (inp.x || inp.y));
   if (kb) {
     h.order = null; h.path = []; h.chop = 0; h.hits = 0;
-    const di = (inp.x / 32 + inp.y / 16) / 2, dj = (inp.y / 16 - inp.x / 32) / 2, l = Math.hypot(di, dj), sp = HERO_DEF.speed * 1.08 * dt;
+    const di = inp.x + inp.y, dj = inp.y - inp.x, l = Math.hypot(di, dj) || 1, sp = HERO_DEF.speed * 1.08 * dt;   // screen right = tile (1,-1), screen down = tile (1,1): the same eight directions as the pictures
     const vx = di / l * sp, vy = dj / l * sp, ok = (i, j) => Terr.has(tileOf(i), tileOf(j)) && tileCost(tileOf(i), tileOf(j), false, true) !== Infinity;
     const nx = h.i + vx, ny = h.j + vy;
     if (ok(nx, ny)) { h.i = nx; h.j = ny; } else if (ok(nx, h.j)) h.i = nx; else if (ok(h.i, ny)) h.j = ny;

@@ -207,12 +207,12 @@ function unitRing(x, y, rx, color, pulse) {
   ctx.globalAlpha = 0.12 + 0.08 * p; ctx.fillStyle = color; ctx.fill(); ctx.restore();
 }
 // Walk animation follows the ground: the phase advances with the distance actually travelled on screen (one full
-// stride cycle per 52 px at sprite scale 1), so the feet do not skate however fast a unit moves.
+// stride cycle per 62 px at sprite scale 1), so the feet do not skate however fast a unit moves.
 function stridePhase(u, x, y, s) {
   const lx = u._lx, ly = u._ly; u._lx = x; u._ly = y;
   if (lx === undefined) return u._ph || 0;
   const d = Math.hypot(x - lx, y - ly);
-  if (d > 0.05 && d < 60) u._ph = (u._ph || 0) + d / (52 * s) * 6.2832;
+  if (d > 0.05 && d < 60) u._ph = (u._ph || 0) + d / (62 * s) * 6.2832;
   return u._ph || 0;
 }
 function drawHero(h, t) {
@@ -220,7 +220,7 @@ function drawHero(h, t) {
   const moving = (h.path && h.path.length > 0) || h.kbMove, yaw = turnTo(h, yawOf(h), 14), sph = stridePhase(h, x, y, S);
   const dim = h.inv > 0 && h.hurt <= 0 && Math.floor(h.inv * 20) % 2 === 0 ? 0.6 : 1;
   const tier = heroTier(), variant = tier ? 'a' + tier : 'hero';
-  const o = { x, y, s: S, yaw, kind: 'idle', u: 0, ph: 0, t, variant, alpha: dim, side: h.face || 1 };
+  const o = { ref: h, x, y, s: S, yaw, kind: 'idle', u: 0, ph: 0, t, variant, alpha: dim, side: h.face || 1 };
   if (h.dead) {
     shadowAt(x, y, 17, 6, 0.28);
     o.kind = 'dead'; o.deadT = Math.max(0, 12 - h.respawn); o.alpha = 0.95; Hero.draw(ctx, o); return;
@@ -248,7 +248,7 @@ function drawGuard(gd, t) {
   const x = isoX(gd.i, gd.j), y = isoY(gd.i, gd.j) + 2;
   shadowAt(x, y, 14, 5.5, 0.28);
   const sph = stridePhase(gd, x, y, 0.94), yaw = turnTo(gd, yawOf(gd), 12), walking = gd.path && gd.path.length > 0 && gd.atk < 0;
-  const o = { x, y, s: 0.94, yaw, kind: 'idle', u: 0, ph: 0, t: t + gd.id, variant: 'a' + clamp(gd.level, 1, 3), side: gd.face || 1 };
+  const o = { ref: gd, x, y, s: 0.94, yaw, kind: 'idle', u: 0, ph: 0, t: t + gd.id, variant: 'a' + clamp(gd.level, 1, 3), side: gd.face || 1 };
   if (gd.atk >= 0) { o.kind = 'attack'; o.u = clamp(gd.atk / 0.45, 0, 1); }
   else if (walking) { o.kind = 'walk'; o.ph = sph; }
   if (gd.hurt > 0) o.flash = 'rgba(255,50,40,.4)';

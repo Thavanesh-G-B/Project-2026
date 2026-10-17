@@ -54,7 +54,7 @@ const EDATA = {
     g: { idle: 'king_idle', walk: 'king_move', beam: 'king_beam', summon: 'king_summon', hurt: 'king_hurt', die: 'king_die' } },
 };
 
-const HERO_DEF = { name: 'Aldric', hp: 220, dmg: 18, speed: 3.2, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6, mana: 100, manaRegen: 3.5, strikeMana: 30, healMana: 45, healPct: 0.35, healCd: 20, armorRed: [0, 0.12, 0.22, 0.32], armorName: ['Cloth tunic', 'Iron armor', 'Gold armor', 'Crystal armor'], titles: ['Wanderer', 'Squire', 'Knight', 'Champion'] };
+const HERO_DEF = { name: 'Aldric', hp: 220, dmg: 18, speed: 2.6, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6, mana: 100, manaRegen: 3.5, strikeMana: 30, healMana: 45, healPct: 0.35, healCd: 20, armorRed: [0, 0.12, 0.22, 0.32], armorName: ['Cloth tunic', 'Iron armor', 'Gold armor', 'Crystal armor'], titles: ['Wanderer', 'Squire', 'Knight', 'Champion'] };
 
 const hallLevel = () => (V.buildings.find(b => b.type === 'townhall') || { level: 1 }).level;
 const maxCount = type => BDEF[type].max[hallLevel() - 1];

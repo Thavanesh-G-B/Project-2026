@@ -4,7 +4,7 @@
 // the sword, axe and death poses face south-east and are mirrored for the other side.
 // Variants: 'hero', armour tiers 'a1'..'a3', and four villager outfits 'v0'..'v3'.
 // how much each facing's legs are re-animated (profile views already have a good stride in the sheet)
-const LEG_AMP = { S: 1, N: 1, SE: 0.75, SW: 0.75, NE: 0.75, NW: 0.75, E: 0.25, W: 0.25 };
+const LEG_AMP = { S: 1, N: 1, SE: 0.9, SW: 0.9, NE: 0.9, NW: 0.9, E: 0, W: 0 };
 const Hero = {
   img: {}, ready: false, DIRS: ['S', 'SE', 'E', 'NE', 'N', 'NW', 'W', 'SW'], tmp: null,
   load() {
@@ -17,18 +17,27 @@ const Hero = {
   // one frame of the sheet: sprite sheet rect and anchor
   frame(name) { return window.HERO_ATLAS.frames[name]; },
   // direction index (0 = S) from a yaw where 0 faces the camera and PI/2 faces screen-right
+  // facing with hysteresis: the sprite only changes direction once the heading has clearly left the current one (about 30 degrees
+  // instead of 22.5), so a unit walking along a slightly wobbly line does not flick between two neighbouring pictures
+  pickDir(o) {
+    const raw = (o.yaw || 0) / (Math.PI / 4), ref = o.ref; let cur = ref ? ref._dir : undefined;
+    if (cur === undefined) cur = Math.round(raw);
+    else { let diff = raw - cur; diff -= 8 * Math.round(diff / 8); if (Math.abs(diff) > 0.68) cur = Math.round(raw); }
+    cur = ((cur % 8) + 8) % 8; if (ref) ref._dir = cur; return cur;
+  },
   dirOf(yaw) { return ((Math.round(yaw / (Math.PI / 4)) % 8) + 8) % 8; },
 
   // o: { x, y (feet), s, yaw, kind: idle|walk|carry|attack|chop|work|strike|hurt|dead, u, ph, t, variant, alpha, flash, side, deadT, carry }
   draw(ctx, o) {
     if (!this.ready) return o;
     const s = o.s || 1, variant = o.variant || 'hero', kind = o.kind || 'idle';
-    let d = this.dirOf(o.yaw || 0), name, flip = false, dx = 0, dy = 0;
+    let d = this.pickDir(o), name, flip = false, dx = 0, dy = 0;
     const sideOf = () => { const sx = Math.sin(o.yaw || 0); return Math.abs(sx) > 0.2 ? (sx < 0 ? -1 : 1) : (o.side || 1); };
     const walkFrame = (dir, k) => { let dd = this.DIRS[dir], f = false; if (dd === 'NW') { dd = 'NE'; f = true; } const n = this.count(dd); return [`w_${dd}_${((k % n) + n) % n}`, f]; };
     const idleFrame = (dir) => { let dd = this.DIRS[dir], f = false; if (dd === 'NW') { dd = 'NE'; f = true; } return [`w_${dd}_${(window.HERO_ATLAS.idle || {})[dd] || 0}`, f]; };
     switch (kind) {
       case 'walk': case 'carry': {
+        if (LEG_AMP[this.DIRS[d]] > 0.3) { [name, flip] = idleFrame(d); break; }          // legs are animated in code (drawLegged) from a standing picture
         const n = this.count(this.DIRS[d] === 'NW' ? 'NE' : this.DIRS[d]);
         [name, flip] = walkFrame(d, Math.floor(((o.ph || 0) / 6.2832) * n));
         break; }
@@ -70,8 +79,9 @@ const Hero = {
   drawLegged(ctx, img, F, s, o, d, flip) {
     const [fx, fy, fw, fh, ax, ay] = F, amp = LEG_AMP[this.DIRS[d]], hipY = Math.round(fh * 0.62), legLen = fh - hipY, cut = Math.round(ax);
     const ph = o.ph || 0, yaw = o.yaw || 0, hx = Math.sin(yaw), hy = 0.5 * Math.cos(yaw);
-    const stride = 5.2 * amp * s, lift = 3.6 * amp * s, bob = 2.0 * amp * s * Math.abs(Math.cos(ph));
-    ctx.drawImage(img, fx, fy, fw, hipY, -ax * s, -ay * s - bob, fw * s, hipY * s);                       // torso
+    const stride = 7 * amp * s, lift = 5 * amp * s, bob = 2.2 * amp * s * Math.abs(Math.cos(ph)), sway = 0.035 * amp * Math.sin(ph) * (flip ? -1 : 1);
+    ctx.save(); ctx.translate(0, (hipY - ay) * s - bob); ctx.rotate(sway);                              // torso: bobs and rocks on the hips
+    ctx.drawImage(img, fx, fy, fw, hipY, -ax * s, -hipY * s, fw * s, hipY * s); ctx.restore();
     for (let side = 0; side < 2; side++) {
       const th = ph + side * Math.PI, sw = Math.sin(th), lf = Math.max(0, Math.cos(th));
       const Sx = hx * stride * sw, Sy = hy * stride * sw - lift * lf;                                    // foot displacement on screen

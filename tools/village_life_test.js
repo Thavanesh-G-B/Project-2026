@@ -133,7 +133,7 @@ const out = process.argv[2] || '/tmp';
     const x0 = isoX(h.i, h.j), y0 = isoY(h.i, h.j);
     await new Promise(r => setTimeout(r, 1500));
     const d = Math.hypot(isoX(h.i, h.j) - x0, isoY(h.i, h.j) - y0);
-    return { dist: Math.round(d), ph: +h._ph.toFixed(2), cycles: +(h._ph / 6.2832).toFixed(2), expected: +(d / 52).toFixed(2) };
+    return { dist: Math.round(d), ph: +h._ph.toFixed(2), cycles: +(h._ph / 6.2832).toFixed(2), expected: +(d / 62).toFixed(2) };
   });
   check('stride phase tracks distance walked (no foot skating)', gait.dist > 60 && Math.abs(gait.cycles - gait.expected) < 0.35, JSON.stringify(gait));
 
@@ -152,6 +152,20 @@ const out = process.argv[2] || '/tmp';
     return res;
   });
   check('chop: hero stands beside the tree, level with it, axe towards it', chopSides.length >= 3 && chopSides.every(r => r && r.level && r.flipped === !r.treeRight), JSON.stringify(chopSides));
+
+  // 12. walking by click: straight legs of travel, a steady facing (no wobble between neighbouring directions), never through buildings
+  const route = await page.evaluate(async () => {
+    V.selHero = false; V.selected = null; V.paused = false; for (const e of V.enemies) e.dead = true; V.enemies = [];
+    const h = V.hero; h.dead = false; h.i = MID - 4.5; h.j = MID + 7.5; h.path = []; h.order = null; h._dir = undefined; h.yawS = undefined;
+    orderMove(MID + 6.5, MID - 6.5);
+    const wp = h.path.length, dirs = [], blocked = []; let last = -1, changes = 0;
+    for (let k = 0; k < 40 * 14 && (h.path.length || k < 5); k++) {
+      step(1 / 40); if (k % 4 === 0) { await new Promise(r => setTimeout(r, 4)); if (h._dir !== undefined && h._dir !== last) { if (last !== -1) changes++; last = h._dir; dirs.push(h._dir); } }
+      if (occAt(Math.floor(h.i), Math.floor(h.j)) !== 0) blocked.push([Math.floor(h.i), Math.floor(h.j)]);
+    }
+    return { waypoints: wp, facingChanges: changes, dirs, blocked: blocked.length, arrived: Math.hypot(h.i - (MID + 6.5), h.j - (MID - 6.5)) < 0.6 };
+  });
+  check('click-walk: few corners, steady facing, no clipping through buildings', route.waypoints <= 4 && route.facingChanges <= 3 && route.blocked === 0 && route.arrived, JSON.stringify(route));
 
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();
