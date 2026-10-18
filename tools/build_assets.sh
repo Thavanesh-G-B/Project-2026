@@ -8,3 +8,4 @@ python3 -I tools/extract_armor.py
 python3 -I tools/build_atlas_js.py
 python3 tools/extract_hero.py
 python3 -I tools/extract_buildings.py
+python3 -I tools/extract_enemies.py

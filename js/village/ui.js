@@ -486,7 +486,7 @@ function refreshInfoLive() {
 }
 function showError(err) { console.error(err); const el = $('err'); el.style.display = 'flex'; el.textContent = 'Something went wrong: ' + err.message; }
 
-Promise.all([Assets.load(), Hero.load(), BLD.load()]).then(() => {
+Promise.all([Assets.load(), Hero.load(), BLD.load(), Foes.load()]).then(() => {
   Trees.build(); Clouds.build(); wire(); resize(); Sfx.setMusic('peace');
   if (!loadGame()) newVillage();
   const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95; refreshQuickBar();

@@ -355,7 +355,7 @@ function updateHero(dt) {
       const t = h.atkTarget;
       const tgt = t && !t.dying ? t : nearestEnemy(h.i, h.j, HERO_DEF.range + 0.4);
       if (tgt && Math.hypot(tgt.i - h.i, tgt.j - h.j) <= HERO_DEF.range + 0.6) {
-        tgt.hurt(st.dmg, 'hero'); sfxAt('hit', tgt.i, tgt.j); if (tgt.type === 'knight' || tgt.type === 'skeleton') sfxAt('clang', tgt.i, tgt.j); V.hitstop = Math.max(V.hitstop, 0.05); V.shake = Math.max(V.shake, 2.5);
+        tgt.hurt(st.dmg, 'hero'); sfxAt('hit', tgt.i, tgt.j); if (tgt.type === 'knight' || tgt.type === 'skeleton' || tgt.type === 'bonelord') sfxAt('clang', tgt.i, tgt.j); V.hitstop = Math.max(V.hitstop, 0.05); V.shake = Math.max(V.shake, 2.5);
         burst(tgt.i, tgt.j, 9, ['#ffffff', '#ffe9a0', '#ffb060'], 120, 0.3, 20);
         const dx = tgt.i - h.i, dy = tgt.j - h.j, l = Math.hypot(dx, dy) || 1; if (!tgt.boss) { tgt.kx = dx / l * 1.6; tgt.ky = dy / l * 1.6; tgt.stun = Math.max(tgt.stun, 0.12); }
         V.slashFx.push({ i: tgt.i, j: tgt.j, t: 0, a: Math.atan2((dx - dy), (dx + dy) * 0.5) });
@@ -715,6 +715,8 @@ function raidQueue(n) {
   while (pts > 0) {
     const r = Math.random();
     if (n >= 3 && r < 0.12 && pts >= 3) { q.push('necro'); pts -= 3; }
+    else if (n >= 4 && r < 0.2 && pts >= 3) { q.push('brute'); pts -= 3; }
+    else if (n >= 6 && r < 0.3 && pts >= 3) { q.push('bonelord'); pts -= 3; }
     else if (n >= 2 && r < 0.38 && pts >= 1.5) { q.push('skeleton'); pts -= 1.5; }
     else if (n >= 2 && r < 0.5 && pts >= 1.5) { q.push('spawn', 'spawn', 'spawn'); pts -= 1.5; }
     else { q.push('zombie'); pts -= 1; }
@@ -738,7 +740,7 @@ function spawnEnemy(type) {
   const e = new Enemy(type, lane.i + rnd(-0.8, 0.8), lane.j + rnd(-0.8, 0.8), hpMul);
   e.dmgMul = 1 + 0.05 * (n - 1);
   V.enemies.push(e);
-  if (Math.random() < 0.5 || EDATA[type].boss) sfxAt(type === 'skeleton' ? 'skeleton' : 'zombie', e.i, e.j);
+  if (Math.random() < 0.5 || EDATA[type].boss) sfxAt(type === 'skeleton' || type === 'bonelord' ? 'skeleton' : 'zombie', e.i, e.j);
   return e;
 }
 function endRaid() {

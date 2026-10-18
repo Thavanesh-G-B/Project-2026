@@ -98,24 +98,25 @@ const BLD = {
 // type -> per level [sprite, target height in px]. The width is always capped to the footprint (w + d) * 32 so a building
 // never spills over its neighbours; `lift` pulls the sprite's front corner in from the footprint's front corner.
 const BSPR = {
-  townhall:   { lv: [['hall_timber', 215], ['hall_timber', 225], ['hall_timber', 235]], lift: 0.16 },
-  barracks:   { lv: [['hall_stone', 150], ['hall_stone', 156], ['hall_stone', 162]], lift: 0.12 },
-  archer:     { lv: [['archer_c', 140], ['archer_c', 150], ['archer_c', 160]], lift: 0.12 },
-  magetower:  { lv: [['mage_c', 150], ['mage_c', 157], ['mage_c', 165]], lift: 0.14, glow: [0.5, 0.1, [120, 200, 255]] },
-  cannon:     { lv: [['cannon_b', 120], ['cannon_b', 128], ['cannon_b', 136]], lift: 0.12 },
-  mortar:     { lv: [['cannon_a', 100], ['cannon_a', 106], ['cannon_a', 112]], lift: 0.12 },
-  goldmine:   { lv: [['mine_gold', 94], ['mine_gold', 98], ['mine_gold', 102]], lift: 0.1 },
-  lumbercamp: { lv: [['lumber', 100], ['lumber', 106], ['lumber', 112]], lift: 0.1 },
-  storage:    { lv: [['farm', 92], ['farm', 96], ['farm', 100]], lift: 0.1 },
+  townhall:   { lv: [['hall_timber', 215], ['hall_timber_2', 225], ['hall_timber_3', 235]], lift: 0.16 },
+  barracks:   { lv: [['hall_stone', 150], ['hall_stone_2', 156], ['hall_stone_3', 162]], lift: 0.12 },
+  archer:     { lv: [['archer_c', 140], ['archer_c_2', 150], ['archer_c_3', 160]], lift: 0.12 },
+  magetower:  { lv: [['mage_c', 150], ['mage_c_2', 157], ['mage_c_3', 165]], lift: 0.14, glow: [[0.5, 0.1, [120, 200, 255]], [0.5, 0.1, [190, 130, 255]], [0.5, 0.1, [255, 190, 90]]] },
+  cannon:     { lv: [['cannon_b', 120], ['cannon_b_2', 128], ['cannon_b_3', 136]], lift: 0.12 },
+  mortar:     { lv: [['cannon_a', 100], ['cannon_a_2', 106], ['cannon_a_3', 112]], lift: 0.12 },
+  goldmine:   { lv: [['mine_gold', 94], ['mine_gold_2', 98], ['mine_gold_3', 102]], lift: 0.1 },
+  lumbercamp: { lv: [['lumber', 100], ['lumber_2', 106], ['lumber_3', 112]], lift: 0.1 },
+  storage:    { lv: [['farm', 92], ['farm_2', 96], ['farm_3', 100]], lift: 0.1 },
   builderhut: { lv: [['house_b', 105]], lift: 0.12 },
-  shrine:     { lv: [['mage_spiral', 150], ['mage_spiral', 157], ['mage_spiral', 165]], lift: 0.14, glow: [0.5, 0.04, [130, 220, 255]] },
+  shrine:     { lv: [['mage_spiral', 150], ['mage_spiral_2', 157], ['mage_spiral_3', 165]], lift: 0.14, glow: [[0.5, 0.04, [130, 220, 255]], [0.5, 0.04, [130, 255, 160]], [0.5, 0.04, [255, 220, 120]]] },
 };
 
 const BART = {
   cache: new Map(),
   fromAtlas(type, L) {
     const m = BSPR[type], [key, th] = m.lv[Math.min(L, m.lv.length) - 1], F = BLD.f(key), def = BDEF[type];
-    const [fx, fy, fw, fh] = F, sc = Math.min(th / fh, (def.w + def.d) * 32 / fw);
+    // the scale comes from the base picture, so a level that adds flags or stacked goods is drawn at the same size as its plain version
+    const FB = BLD.f(key.replace(/_[23]$/, '')), [fx, fy, fw, fh] = F, sc = Math.min(th / FB[3], (def.w + def.d) * 32 / fw);
     const W = Math.ceil(fw * sc) + 24, H = Math.ceil(fh * sc) + 16;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
@@ -124,7 +125,7 @@ const BART = {
     // footprint's front corner (half a diamond below its centre), pulled in a little by `lift`.
     const half = (def.w + def.d) * 8, front = half * (1 - (m.lift || 0));
     const out = { canvas: c, ox: W / 2, oy: H - 4 - front, sprite: key, scale: sc };
-    if (m.glow) out.glow = { x: 0, y: -(H - 4 - front) + 4 + fh * sc * m.glow[1], color: m.glow[2] };
+    if (m.glow) { const gl = Array.isArray(m.glow[0]) ? m.glow[Math.min(L, m.glow.length) - 1] : m.glow; out.glow = { x: 0, y: -(H - 4 - front) + 4 + fh * sc * gl[1], color: gl[2] }; }
     return out;
   },
   // returns {canvas, ox, oy, flag?, turret?}; draw at (centreX - ox, centreY - oy)

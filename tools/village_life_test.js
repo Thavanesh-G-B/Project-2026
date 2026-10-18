@@ -168,6 +168,16 @@ const out = process.argv[2] || '/tmp';
   });
   check('click-walk: few corners, steady facing, no clipping through buildings', route.waypoints <= 4 && route.facingChanges <= 3 && route.blocked === 0 && route.arrived, JSON.stringify(route));
 
+  // 13. raiders: the 3x resolution atlas is used, every enemy type draws, and the new Brute / Bone Lord appear in later raids
+  const foes = await page.evaluate(async () => {
+    for (const e of V.enemies) e.dead = true; V.enemies = []; const out = { types: {}, queue: [] };
+    for (const t of Object.keys(EDATA)) { try { const e = new Enemy(t, MID + 6, MID + 6, 1); V.enemies.push(e); out.types[t] = !!Foes.frame(e.d.g.walk || e.d.g.idle, 0); } catch (err) { out.types[t] = String(err); } }
+    await new Promise(r => setTimeout(r, 300)); V.enemies = [];
+    for (let n = 4; n <= 8; n++) for (let k = 0; k < 20; k++) for (const t of raidQueue(n)) if (t === 'brute' || t === 'bonelord') out.queue.push(t);
+    out.k = window.FOES.k; out.queue = [...new Set(out.queue)]; return out;
+  });
+  check('enemy art: 3x atlas, all types (incl. Brute and Bone Lord) draw, new types join raids', foes.k === 3 && Object.values(foes.types).every(v => v === true) && foes.queue.includes('brute') && foes.queue.includes('bonelord'), JSON.stringify(foes));
+
   console.log(errors.length ? errors.join('\n') : 'no console errors');
   await browser.close();
   process.exit(errors.length || fail ? 1 : 0);

@@ -183,7 +183,7 @@ function nameTag(x, y, text, color) {
 // ---------------------------------------------------------------- people (one pixel-art character, eight facings)
 const heroTier = () => heroTierNow();
 // facing on screen: 0 = towards the camera, PI/2 = screen-right, PI = away, -PI/2 = screen-left
-function yawOf(u) { const f = u.fdir || { x: 0.7, y: 0.7 }; return Math.atan2(f.x - f.y, f.x + f.y); }
+function yawOf(u) { const f = u.fdir || { x: 0.7, y: 0.7 }; return Math.atan2(f.x - f.y, (f.x + f.y) * 0.5); }   // the true on-screen heading (a map axis is 63 degrees from straight down, not 45)
 function turnTo(u, target, rate) {
   if (u.yawS === undefined) { u.yawS = target; return u.yawS; }
   let d = target - u.yawS; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832;
@@ -258,13 +258,13 @@ function drawGuard(gd, t) {
 }
 function enemyFrame(e) {
   const g = e.d.g, t = e.walkT;
-  const loop = (grp, fps) => [grp, Math.floor(t * fps) % Assets.count(grp)];
+  const loop = (grp, fps) => [grp, Math.floor(t * fps) % Foes.count(grp)];
   if (e.dying) {
-    if (g.die) { const n = Assets.count(g.die), per = e.boss ? 0.28 : 0.13; return [g.die, Math.min(n - 1, Math.floor(e.dieT / per))]; }
+    if (g.die) { const n = Foes.count(g.die), per = e.boss ? 0.28 : 0.13; return [g.die, Math.min(n - 1, Math.floor(e.dieT / per))]; }
     return [g.idle || g.walk, 0];
   }
   switch (e.type) {
-    case 'zombie': case 'skeleton':
+    case 'zombie': case 'skeleton': case 'brute': case 'bonelord':
       if (e.atk >= 0) return [g.atk, Math.min(3, Math.floor(e.atk / 0.55 * 4))];
       return (e.path && e.path.length) || e.dir && !e.blocker ? loop(g.walk, 6) : loop(g.idle, 3);
     case 'spawn': return loop(g.walk, 8);
@@ -280,23 +280,33 @@ function enemyFrame(e) {
   }
   return [g.idle || g.walk, 0];
 }
+// a soft coloured light around the magical and heavy raiders (drawn under the body, additive)
+const FOE_GLOW = { necro: [150, 90, 230, 0.42, 34], king: [170, 70, 240, 0.5, 58], knight: [255, 110, 40, 0.34, 44], brute: [230, 70, 40, 0.2, 26], bonelord: [110, 170, 255, 0.28, 28], spawn: [120, 230, 200, 0.28, 18] };
 function drawEnemy(e, t) {
-  const x = isoX(e.i, e.j), y = isoY(e.i, e.j) + 2;
+  const x = isoX(e.i, e.j), y = isoY(e.i, e.j) + 2, sc = e.d.scale;
   const hover = e.flying && !e.dying ? 26 + Math.sin(e.hover * 3) * 3 : 0;
-  shadowAt(x, y, e.boss ? 20 : 12, e.boss ? 9 : 5, e.flying ? 0.18 : 0.3);
-  if (V.selEnemy === e) unitRing(x, y, e.boss ? 34 : 20, '#ff8a70');
+  shadowAt(x, y, 10 + sc * 8, 4.5 + sc * 3.5, e.flying ? 0.18 : 0.32);
+  if (V.selEnemy === e) unitRing(x, y, e.boss ? 34 : 20 + sc * 4, '#ff8a70');
+  const [grp, idx] = enemyFrame(e), hgt = Foes.height(grp, sc);
   if (V.hero && V.hero.order && V.hero.order.type === 'attack' && V.hero.order.e === e && !e.dying) {     // the hero's current target
-    const k = 0.5 + 0.5 * Math.sin(UI.time * 8), yy = y - hover - (e.boss ? 100 : 62) - k * 3;
+    const k = 0.5 + 0.5 * Math.sin(UI.time * 8), yy = y - hover - hgt - 14 - k * 3;
     ctx.save(); ctx.fillStyle = '#ff5a40'; ctx.strokeStyle = 'rgba(40,10,6,.9)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 7, yy - 9); ctx.lineTo(x + 7, yy - 9); ctx.lineTo(x, yy); ctx.closePath(); ctx.stroke(); ctx.fill(); ctx.restore();
   }
-  const [grp, idx] = enemyFrame(e);
+  const gl = FOE_GLOW[e.type];
+  if (gl && !e.dying) {
+    const pulse = 0.75 + 0.25 * Math.sin(UI.time * 3 + e.hover), r = gl[4] * sc / 0.9 * (0.9 + 0.1 * pulse), gy = y - hover - hgt * 0.5;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; const gr = ctx.createRadialGradient(x, gy, 2, x, gy, r);
+    gr.addColorStop(0, `rgba(${gl[0]},${gl[1]},${gl[2]},${gl[3] * pulse})`); gr.addColorStop(1, `rgba(${gl[0]},${gl[1]},${gl[2]},0)`); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, gy, r, 0, 6.283); ctx.fill(); ctx.restore();
+  }
+  // a little lean into the blow while attacking, and a slight sway while walking
+  let lx = 0; if (e.atk >= 0 && !e.dying) lx = Math.sin(clamp(e.atk / 0.5, 0, 1) * Math.PI) * 3 * sc * (e.face < 0 ? -1 : 1);
   ctx.save();
   if (e.dying && e.d.g.die == null) ctx.globalAlpha = Math.max(0, 1 - e.dieT / 0.7);
   else if (e.dying && e.dieT > (e.boss ? 1.8 : 1.0)) ctx.globalAlpha = Math.max(0, 1 - (e.dieT - (e.boss ? 1.8 : 1.0)) / 0.6);
-  Assets.char(ctx, grp, idx, x, y - hover, e.d.scale, e.face < 0);
-  if (e.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.5; Assets.char(ctx, grp, idx, x, y - hover, e.d.scale, e.face < 0); }
+  Foes.char(ctx, grp, idx, x + lx, y - hover, sc, e.face < 0);
+  if (e.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.5; Foes.char(ctx, grp, idx, x + lx, y - hover, sc, e.face < 0); }
   ctx.restore();
-  if (!e.dying && !e.boss && e.hp < e.maxHp) drawBar(x, y - hover - 44 * e.d.scale / 0.55 * 0.62, 26, e.hp / e.maxHp, { ent: e, h: 5, col: ['#ff9a80', '#d8402c', '#7a1810'] });
+  if (!e.dying && !e.boss && e.hp < e.maxHp) drawBar(x, y - hover - hgt - 8, 22 + sc * 8, e.hp / e.maxHp, { ent: e, h: 5, col: ['#ff9a80', '#d8402c', '#7a1810'] });
 }
 function drawProj(p) {
   const x = isoX(p.i, p.j), arc = p.kind === 'ball' ? Math.sin(Math.min(1, 1 - Math.hypot(p.ti - p.i, p.tj - p.j) / Math.max(0.01, p.d0 || 1)) * Math.PI) * 28 : 0;

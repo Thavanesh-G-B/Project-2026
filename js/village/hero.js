@@ -17,13 +17,23 @@ const Hero = {
   // one frame of the sheet: sprite sheet rect and anchor
   frame(name) { return window.HERO_ATLAS.frames[name]; },
   // direction index (0 = S) from a yaw where 0 faces the camera and PI/2 faces screen-right
-  // facing with hysteresis: the sprite only changes direction once the heading has clearly left the current one (about 30 degrees
-  // instead of 22.5), so a unit walking along a slightly wobbly line does not flick between two neighbouring pictures
+  // Which of the eight pictures to show for a heading (yaw: 0 = towards the camera, 90 degrees = screen-right). The pictures are not spread
+  // evenly: a heading of 63 degrees (walking along a map axis, "right and a little down") must show the side view, not the front-facing
+  // three-quarter one, so the side views take everything between 52 and 128 degrees. The current picture is held a little longer (hysteresis)
+  // so a heading that wobbles near a boundary does not flicker between two pictures.
+  BINS: [24, 52, 128, 156],
   pickDir(o) {
-    const raw = (o.yaw || 0) / (Math.PI / 4), ref = o.ref; let cur = ref ? ref._dir : undefined;
-    if (cur === undefined) cur = Math.round(raw);
-    else { let diff = raw - cur; diff -= 8 * Math.round(diff / 8); if (Math.abs(diff) > 0.68) cur = Math.round(raw); }
-    cur = ((cur % 8) + 8) % 8; if (ref) ref._dir = cur; return cur;
+    let a = (o.yaw || 0) * 180 / Math.PI; a = ((a + 180) % 360 + 360) % 360 - 180;
+    const right = a >= 0, ab = Math.abs(a), ref = o.ref, T = this.BINS, bin = x => (x < T[0] ? 0 : x < T[1] ? 1 : x < T[2] ? 2 : x < T[3] ? 3 : 4);
+    let bi = bin(ab);
+    if (ref && ref._bi !== undefined && ref._bi !== bi) {                       // stay in the current bin until clearly past its edge
+      const lo = ref._bi > 0 ? T[ref._bi - 1] - 7 : -999, hi = ref._bi < 4 ? T[ref._bi] + 7 : 999;
+      if (ab >= lo && ab < hi) bi = ref._bi;
+    }
+    let side = right; if (ref && ref._side !== undefined && bi >= 1 && bi <= 3 && bi === ref._bi && Math.abs(a) > 0) side = ref._side;   // do not change sides mid-bin
+    const d = bi === 0 ? 0 : bi === 4 ? 4 : (side ? [0, 1, 2, 3, 4][bi] : [0, 7, 6, 5, 4][bi]);
+    if (ref) { ref._bi = bi; ref._side = side; ref._dir = d; }
+    return d;
   },
   dirOf(yaw) { return ((Math.round(yaw / (Math.PI / 4)) % 8) + 8) % 8; },
 

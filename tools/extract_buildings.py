@@ -145,6 +145,94 @@ def finish(name, rgba):
 frames = {}
 for name, (sheet, box, blank, opt) in S.items():
     frames[name] = finish(name, defringe(cut(sheet, box, blank)))
+
+# ---------------------------------------------------------------- upgrade looks
+# Level 2 and 3 of a building are recoloured / dressed copies of the base picture, so an upgraded building still belongs to the village:
+# roofs and banners change colour, crystals change colour with their tier, goods pile up, flags go up.
+import colorsys
+from PIL import ImageDraw
+
+def hsv_arrays(rgb):
+    r, g, b = [rgb[..., i].astype(float) / 255 for i in range(3)]
+    mx = np.maximum(np.maximum(r, g), b); mn = np.minimum(np.minimum(r, g), b); d = mx - mn
+    h = np.zeros_like(mx); m = d > 1e-6
+    rc = np.where(m, (mx - r) / np.where(m, d, 1), 0); gc = np.where(m, (mx - g) / np.where(m, d, 1), 0); bc = np.where(m, (mx - b) / np.where(m, d, 1), 0)
+    h = np.where(r == mx, bc - gc, np.where(g == mx, 2 + rc - bc, 4 + gc - rc)); h = (h / 6) % 1.0; h = np.where(m, h, 0)
+    return h * 360, np.where(mx > 0, d / np.maximum(mx, 1e-6), 0), mx
+
+def recolor(rgba, box, hue_rng, to_hue, sat=1.0, val=1.0, smin=0.18, vmin=0.0, vmax=1.01):
+    """Shift the hue of pixels inside `box` (fractions x0,y0,x1,y1) whose hue is in hue_rng (degrees, may wrap) to `to_hue`."""
+    out = rgba.copy(); H, W_ = out.shape[:2]
+    x0, y0, x1, y1 = int(box[0] * W_), int(box[1] * H), int(box[2] * W_), int(box[3] * H)
+    h, sa, v = hsv_arrays(out[..., :3]); a = out[..., 3] > 0
+    lo, hi = hue_rng; inr = ((h >= lo) & (h <= hi)) if lo <= hi else ((h >= lo) | (h <= hi))
+    m = a & inr & (sa >= smin) & (v >= vmin) & (v <= vmax); region = np.zeros_like(m); region[y0:y1, x0:x1] = True; m &= region
+    ys, xs = np.where(m)
+    for y_, x_ in zip(ys, xs):
+        hh, ss, vv = h[y_, x_], sa[y_, x_], v[y_, x_]
+        r_, g_, b_ = colorsys.hsv_to_rgb(to_hue / 360, min(1, ss * sat), min(1, vv * val)); out[y_, x_, :3] = (np.array([r_, g_, b_]) * 255).astype(np.uint8)
+    return out
+
+def with_pil(rgba, fn):
+    pad = 14; big = np.zeros((rgba.shape[0] + pad * 2, rgba.shape[1] + pad * 2, 4), np.uint8); big[pad:-pad, pad:-pad] = rgba
+    im_ = Image.fromarray(big, 'RGBA'); fn(ImageDraw.Draw(im_), pad); res = np.array(im_)
+    a = res[..., 3] > 0; ys, xs = np.where(a); return res[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+def flag(d, x, y, h, col, pole=(60, 44, 30), w=13, dark=None):
+    """A pennant on a pole; (x, y) is the foot of the pole."""
+    dark = dark or tuple(int(c * 0.55) for c in col)
+    d.line([(x, y), (x, y - h)], fill=pole + (255,), width=2)
+    d.polygon([(x + 1, y - h), (x + 1 + w, y - h + 3), (x + 1 + w - 3, y - h + 6), (x + 1 + w, y - h + 9), (x + 1, y - h + 9)], fill=col + (255,), outline=dark + (255,))
+    d.ellipse([x - 1, y - h - 2, x + 2, y - h + 1], fill=(235, 200, 90, 255))
+
+def nuggets(d, rng, box, n, cols):
+    for _ in range(n):
+        x = rng.integers(box[0], box[2]); y = rng.integers(box[1], box[3]); r = int(rng.integers(2, 5)); c = cols[int(rng.integers(0, len(cols)))]
+        d.polygon([(x - r, y), (x - r // 2, y - r), (x + r // 2, y - r), (x + r, y), (x, y + r // 2)], fill=c + (255,), outline=(120, 80, 10, 255))
+
+def upgrade(base, lvl):
+    f = frames[base]; H_, W_ = f.shape[:2]; rng = np.random.default_rng(hash(base) % 2**32 + lvl)
+    GOLD = (255, 214, 90); BLUE = (70, 120, 205); CRIM = (190, 50, 56); VIOLET = (140, 90, 210)
+    if base == 'hall_timber':
+        f = recolor(f, (0, 0, 1, 0.64), (8, 50), 208 if lvl == 2 else 352, sat=0.55 if lvl == 2 else 0.95, val=1.0 if lvl == 2 else 0.95, smin=0.36, vmin=0.5)
+        f = with_pil(f, lambda d, p: (flag(d, p + int(W_ * 0.17), p + int(H_ * 0.2), 30, BLUE if lvl == 2 else GOLD), flag(d, p + int(W_ * 0.80), p + int(H_ * 0.30), 28, BLUE if lvl == 2 else GOLD)))
+    elif base == 'archer_c':
+        if lvl == 3: f = recolor(f, (0, 0, 1, 0.3), (0, 360), 44, sat=0.9, val=1.12, smin=0.0, vmin=0.5)           # golden parapet
+        f = with_pil(f, lambda d, p: flag(d, p + int(W_ * 0.12), p + int(H_ * 0.12), 26, BLUE if lvl == 2 else GOLD))
+    elif base == 'mage_c':
+        f = recolor(f, (0, 0, 1, 1), (160, 225), 275 if lvl == 2 else 38, sat=1.0, val=1.0, smin=0.25)
+    elif base == 'mage_spiral':
+        f = recolor(f, (0, 0, 1, 1), (160, 225), 135 if lvl == 2 else 44, sat=1.0, val=1.0, smin=0.25)
+    elif base == 'cannon_b':
+        f = recolor(f, (0, 0, 1, 0.5), (20, 55), 212 if lvl == 2 else 44, sat=0.35 if lvl == 2 else 1.0, val=0.95 if lvl == 2 else 1.25, smin=0.25)
+        f = with_pil(f, lambda d, p: flag(d, p + int(W_ * 0.08), p + int(H_ * 0.34), 26, BLUE if lvl == 2 else GOLD))
+    elif base == 'cannon_a':
+        f = recolor(f, (0, 0, 1, 0.7), (5, 40), 212 if lvl == 2 else 44, sat=0.6 if lvl == 2 else 1.0, val=1.0 if lvl == 2 else 1.3, smin=0.25)
+        f = with_pil(f, lambda d, p: flag(d, p + int(W_ * 0.9), p + int(H_ * 0.4), 26, BLUE if lvl == 2 else GOLD))
+    elif base == 'mine_gold':
+        n = 7 if lvl == 2 else 16
+        f = with_pil(f, lambda d, p: nuggets(d, rng, (p + int(W_ * 0.05), p + int(H_ * 0.72), p + int(W_ * 0.95), p + int(H_ * 0.98)), n, [(255, 214, 80), (255, 190, 40), (255, 236, 140)]))
+        if lvl == 3: f = recolor(f, (0, 0, 1, 1), (18, 48), 46, sat=1.15, val=1.12, smin=0.3)
+    elif base == 'lumber':
+        f = recolor(f, (0, 0, 1, 0.5), (15, 45), 120 if lvl == 2 else 205, sat=0.5 if lvl == 2 else 0.5, val=0.95, smin=0.25)       # moss green / slate roof
+        logs = frames['logs']; sc = 0.4 if lvl == 2 else 0.5
+        lg = Image.fromarray(logs, 'RGBA').resize((int(logs.shape[1] * sc), int(logs.shape[0] * sc)), Image.LANCZOS)
+        def put(d, p, lg=lg):
+            pass
+        pad = 12; big = Image.new('RGBA', (f.shape[1] + pad * 2 + 40, f.shape[0] + pad * 2), (0, 0, 0, 0)); big.alpha_composite(Image.fromarray(f, 'RGBA'), (pad + 40, pad))
+        big.alpha_composite(lg, (pad, big.size[1] - lg.size[1] - pad)); res = np.array(big); a = res[..., 3] > 0; ys, xs = np.where(a); f = res[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    elif base == 'farm':
+        f = with_pil(f, lambda d, p: (flag(d, p + int(W_ * 0.62), p + int(H_ * 0.34), 22, BLUE if lvl == 2 else GOLD),
+                                      [d.rectangle([p + int(W_ * 0.04) + i * 9, p + int(H_ * 0.68) - (i % 2) * 5, p + int(W_ * 0.04) + i * 9 + 8, p + int(H_ * 0.68) + 7 - (i % 2) * 5], fill=(170, 120, 62, 255), outline=(50, 32, 20, 255)) for i in range(2 if lvl == 2 else 4)]))
+    elif base == 'hall_stone':
+        f = recolor(f, (0, 0, 1, 1), (340, 25), 212 if lvl == 2 else 44, sat=0.95, val=1.0 if lvl == 2 else 1.25, smin=0.45)
+        f = with_pil(f, lambda d, p: flag(d, p + int(W_ * 0.5), p + int(H_ * 0.12), 22, BLUE if lvl == 2 else GOLD))
+    return f
+
+for base in ['hall_timber', 'archer_c', 'mage_c', 'mage_spiral', 'cannon_b', 'cannon_a', 'mine_gold', 'lumber', 'farm', 'hall_stone']:
+    for lvl in (2, 3):
+        frames[f'{base}_{lvl}'] = upgrade(base, lvl)
+
 names = list(frames)
 PAD = 3; AW = 1400; x = y = rowh = 0; rects = {}
 for n in names:

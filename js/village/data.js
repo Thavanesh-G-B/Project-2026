@@ -40,17 +40,21 @@ const EXPAND = [null, { gold: 250, wood: 150, th: 1 }, { gold: 700, wood: 450, t
 
 // Enemy templates. speed in tiles/s; scale = sprite scale on the isometric map.
 const EDATA = {
-  zombie: { name: 'Zombie', hp: 46, speed: 0.95, dmg: 14, cd: 1.0, range: 0.9, scale: 0.62, target: 'any', gold: 2, xp: 2,
+  zombie: { name: 'Zombie', hp: 46, speed: 0.95, dmg: 14, cd: 1.0, range: 0.9, scale: 0.8, target: 'any', gold: 2, xp: 2,
     g: { idle: 'zombie_idle', walk: 'zombie_walk', atk: 'zombie_atk', die: 'zombie_die' } },
-  skeleton: { name: 'Skeleton', hp: 42, speed: 1.5, dmg: 11, cd: 0.8, range: 0.9, scale: 0.72, target: 'defense', gold: 3, xp: 3,
+  skeleton: { name: 'Skeleton', hp: 42, speed: 1.5, dmg: 11, cd: 0.8, range: 0.9, scale: 0.88, target: 'defense', gold: 3, xp: 3,
     g: { idle: 'skel_idle', walk: 'skel_walk', atk: 'skel_atk', die: 'skel_die' } },
-  necro: { name: 'Necromancer', hp: 54, speed: 0.85, dmg: 18, cd: 2.2, range: 5.2, scale: 0.72, target: 'any', gold: 7, xp: 6, ranged: true,
+  brute: { name: 'Brute', hp: 190, speed: 0.78, dmg: 30, cd: 1.3, range: 1.0, scale: 1.0, target: 'any', gold: 6, xp: 6,
+    g: { idle: 'brute_idle', walk: 'brute_walk', atk: 'brute_atk', die: 'brute_die' } },
+  bonelord: { name: 'Bone Lord', hp: 120, speed: 1.25, dmg: 20, cd: 0.9, range: 0.95, scale: 0.98, target: 'defense', gold: 7, xp: 7,
+    g: { idle: 'bonelord_idle', walk: 'bonelord_walk', atk: 'bonelord_atk', die: 'bonelord_die' } },
+  necro: { name: 'Necromancer', hp: 54, speed: 0.85, dmg: 18, cd: 2.2, range: 5.2, scale: 0.9, target: 'any', gold: 7, xp: 6, ranged: true,
     g: { idle: 'necro_idle', walk: 'necro_walk', cast: 'necro_cast', summon: 'necro_summon' } },
-  spawn: { name: 'Necro-Spawn', hp: 16, speed: 2.1, dmg: 7, cd: 0.6, range: 0.8, scale: 0.7, target: 'any', gold: 1, xp: 1,
+  spawn: { name: 'Necro-Spawn', hp: 16, speed: 2.1, dmg: 7, cd: 0.6, range: 0.8, scale: 0.9, target: 'any', gold: 1, xp: 1,
     g: { walk: 'spawn_walk', idle: 'spawn_walk' } },
-  knight: { name: 'Cursed Knight', hp: 900, speed: 0.8, dmg: 70, cd: 1.5, range: 1.3, scale: 1.35, target: 'defense', boss: true, gold: 120, xp: 40,
+  knight: { name: 'Cursed Knight', hp: 900, speed: 0.8, dmg: 70, cd: 1.5, range: 1.3, scale: 1.6, target: 'defense', boss: true, gold: 120, xp: 40,
     g: { idle: 'knight_idle', walk: 'knight_walk', swing: 'knight_swing', die: 'knight_die' } },
-  king: { name: 'Necromancer King', hp: 1200, speed: 1.0, dmg: 42, cd: 1.8, range: 6.0, scale: 1.35, target: 'townhall', boss: true, flying: true, ranged: true, gold: 250, xp: 80,
+  king: { name: 'Necromancer King', hp: 1200, speed: 1.0, dmg: 42, cd: 1.8, range: 6.0, scale: 1.6, target: 'townhall', boss: true, flying: true, ranged: true, gold: 250, xp: 80,
     g: { idle: 'king_idle', walk: 'king_move', beam: 'king_beam', summon: 'king_summon', hurt: 'king_hurt', die: 'king_die' } },
 };
 
