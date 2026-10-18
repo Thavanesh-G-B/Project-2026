@@ -129,8 +129,11 @@ const out = process.argv[2] || '/tmp';
 
   // 10. walk animation follows the ground: the stride phase advances in proportion to the distance walked
   const gait = await page.evaluate(async () => {
-    V.selected = null; V.selHero = false; V.hero.dead = false; V.hero.i = MID + 0.5; V.hero.j = MID + 9.5; V.hero.path = []; UI.cam.zoom = 1; UI.follow = true; centerOn(V.hero.i, V.hero.j);
-    await new Promise(r => setTimeout(r, 200)); const h = V.hero; h._ph = 0; h._lx = undefined; orderMove(MID + 9.5, MID + 9.5);
+    V.selected = null; V.selHero = false; V.hero.dead = false; V.hero.path = [];
+    // a free row of tiles (random trees / props can block any fixed spot): find a run of 8 free tiles
+    let row = null; for (let j = MID + 4; j < MID + 12 && !row; j++) for (let i = MID - 6; i < MID + 4 && !row; i++) { let ok = true; for (let k = 0; k < 8; k++) if (occAt(i + k, j) !== 0 || !Terr.has(i + k, j)) ok = false; if (ok) row = [i, j]; }
+    V.hero.i = row[0] + 0.5; V.hero.j = row[1] + 0.5; UI.cam.zoom = 1; UI.follow = true; centerOn(V.hero.i, V.hero.j);
+    await new Promise(r => setTimeout(r, 200)); const h = V.hero; h._ph = 0; h._lx = undefined; orderMove(row[0] + 7.5, row[1] + 0.5);
     const x0 = isoX(h.i, h.j), y0 = isoY(h.i, h.j);
     await new Promise(r => setTimeout(r, 1500));
     const d = Math.hypot(isoX(h.i, h.j) - x0, isoY(h.i, h.j) - y0);
