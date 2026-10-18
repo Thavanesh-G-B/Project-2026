@@ -24,6 +24,7 @@ const out = process.argv[2] || '/tmp';
     return res;
   });
   check('hero drawn from all 8 sides (NW mirrors NE)', rig.dirs.every(([n, h]) => n && h > 70) && rig.dirs[5][0].startsWith('w_NE') && rig.dirs[5][2], JSON.stringify(rig.dirs.map(d => d[0])));
+  check('right-hand diagonals are mirrors of the left ones, so head and body point the way he walks', rig.dirs[1][0].startsWith('w_SW') && rig.dirs[1][2] === true && rig.dirs[7][0].startsWith('w_SW') && rig.dirs[7][2] === false && rig.dirs[5][2] === true && rig.dirs[3][2] === false, JSON.stringify(rig.dirs.map(d => d[0] + (d[2] ? '*' : ''))));
   check('all actions pick a frame', Object.values(rig.kinds).every(([n, h]) => n && h > 20), JSON.stringify(Object.fromEntries(Object.entries(rig.kinds).map(([k, v]) => [k, v[0]]))));
   check('armour and villager outfits load', Object.values(rig.variants).every(Boolean), JSON.stringify(rig.variants));
 
