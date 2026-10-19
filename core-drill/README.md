@@ -33,7 +33,11 @@ A break-room arcade game for the **StudyOps** app. You pilot a mining rig down i
 
 `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse or `Space` fires, `B` bomb, `F` Override, hold `R` for an emergency recall (25% fee). Touch devices get an on-screen pad.
 
-## Run it
+## Play it
+
+Open **`../core-drill.html`** (repo root) in a browser. It is a single self-contained file built by `npm run build:standalone`; progress is saved in the browser's localStorage.
+
+## Develop it
 
 ```bash
 cd core-drill

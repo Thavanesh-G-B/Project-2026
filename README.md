@@ -108,3 +108,10 @@ NODE_PATH=$(npm root -g) node tools/sfx_meter.js                       # plays e
 NODE_PATH=$(npm root -g) node tools/village_life_test.js <screenshot-dir>  # village: character sprites, hero panel and abilities, chop and fall, villagers, dusk, every sound voice
 NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot plays 12 raids including both bosses
 ```
+
+
+## Core Drill: Planetfall (`core-drill.html`)
+
+A dig-down mining game with combat, built for the StudyOps study app. **Just open `core-drill.html` in a browser** (double-click, no install, works offline apart from fonts). It saves progress in your browser; use the "+ Simulate study session" button to earn Focus Energy like studying would. Source, tests and the StudyOps integration script live in [`core-drill/`](core-drill/README.md).
+
+Controls: `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse/`Space` fire, `B` bomb, `F` flashcard Override, hold `R` to recall.

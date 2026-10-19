@@ -2,7 +2,7 @@
  * Standalone harness: a mock StudyOps profile so Core Drill can be played and tested
  * without the rest of the app. Mirrors what App.tsx does with the real callbacks.
  */
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import CoreDrillGame from '../components/CoreDrillGame';
 import { applyRunResult, buyUpgrade, launchPlanet } from '../game/progress';
@@ -30,12 +30,27 @@ const FLASHCARDS: Flashcard[] = [
   { id: '3', subject: 'languages', deck: 'French', question: 'How do you say "thank you" in French?', answer: 'Merci', mastered: false },
 ];
 
+const SAVE_KEY = 'core_drill_standalone_save_v1';
+const loadSave = (): DrillProfile | null => {
+  try { const raw = localStorage.getItem(SAVE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+};
+const freshProfile = (): DrillProfile => ({
+  focusEnergy: n('en', 300), techScrap: n('scrap', 420), neuroCores: 3, streakDays: n('streak', 4),
+});
+
 function Harness() {
-  const [profile, setProfile] = useState<DrillProfile>({
-    focusEnergy: n('en', 300), techScrap: n('scrap', 420), neuroCores: 3, streakDays: n('streak', 4),
-  });
+  const [profile, setProfile] = useState<DrillProfile>(() => (params.has('fresh') ? null : loadSave()) ?? freshProfile());
+  useEffect(() => {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(profile)); } catch { /* storage may be blocked */ }
+  }, [profile]);
   const augments = (params.get('aug') ?? 'math,cs').split(',').filter(Boolean).map((k) => AUGMENTS[k]).filter(Boolean);
   return (
+    <>
+    <div className="demo-bar">
+      <span>STANDALONE DEMO — in StudyOps, studying earns Focus Energy and Scrap.</span>
+      <button onClick={() => setProfile((p) => ({ ...p, focusEnergy: p.focusEnergy + 100, techScrap: p.techScrap + 100 }))}>+ Simulate study session (+100 EN, +100 Scrap)</button>
+      <button onClick={() => { if (confirm('Reset all progress?')) setProfile(freshProfile()); }}>Reset save</button>
+    </div>
     <CoreDrillGame
       profile={profile}
       augments={augments}
@@ -46,6 +61,7 @@ function Harness() {
       onOverrideSuccess={() => console.log('override success')}
       onVaultSolved={() => console.log('vault solved')}
     />
+    </>
   );
 }
 

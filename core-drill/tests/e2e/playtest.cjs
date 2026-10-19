@@ -46,7 +46,8 @@ fs.mkdirSync(OUT, { recursive: true });
   await eng(() => { const e = window.__coreDrill.engine; 
     const W = e.world.w, ry = Math.floor(e.y); for (let x = Math.floor(e.x); x < Math.floor(e.x) + 6; x++) e.world.tiles[ry * W + x] = 0;
     const c = e.spawnEnemy('crawler', e.x + 3, e.y); c.speed = 0; });
-  await p.mouse.move(640 + 150, 360); await p.mouse.down(); await p.waitForTimeout(1500); await p.mouse.up();
+  const cr = await p.evaluate(() => { const r = document.querySelector('.cd-canvas').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  await p.mouse.move(cr.x + 150, cr.y); await p.mouse.down(); await p.waitForTimeout(1500); await p.mouse.up();
   assert((await eng(() => window.__coreDrill.engine.kills)) >= 1, 'blaster killed the crawler');
   step('blaster kills enemies');
 
