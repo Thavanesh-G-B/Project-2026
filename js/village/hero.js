@@ -18,7 +18,7 @@ const Hero = {
   // ---------------------------------------------------------------- the knight (hero and guards)
   K: { img: {}, tint: {}, SCALE: 1.0, ROW: { SE: 0, S: 1, SW: 2, W: 3, NW: 4, N: 5, NE: 6, E: 7 }, tmp: null },
   // tier tints: multiplied over the steel-grey knight (cloth tunic -> leather, iron -> cold steel, gold, crystal)
-  KTINT: { hero: '', a1: '#c4d2ea', a2: '#ffd36a', a3: '#8fe4ff' },
+  KTINT: { hero: '#dcc3a0', a1: '#c4d2ea', a2: '#ffd36a', a3: '#8fe4ff' },
   isKnight(variant) { return variant === 'hero' || variant === 'a1' || variant === 'a2' || variant === 'a3'; },
   loadKnight() {
     const A = window.KNIGHT_ATLAS; if (!A) return [];
