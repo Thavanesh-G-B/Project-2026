@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cargoCount, cargoValue, coreDepth, getPlanet, isPlanetUnlocked, MERCHANT_OFFERS, nextPlanet, normalizeDrillSave,
-  PLANETS, PlanetDef, resolveRigStats, TILE, UPGRADES, upgradeCost,
+  PLANETS, PlanetDef, resolveRigStats, sortieCost, TILE, UPGRADES, upgradeCost,
 } from '../game/balance';
 import { DrillEngine, EngineEvent, Input } from '../game/engine';
 import { Camera, render } from '../game/render';
 import { isMuted, music, setMuted, sfx } from '../game/sfx';
+import type { SortieResult } from '../space/engine';
 import type { DrillProfile, DrillUpgradeKey, Flashcard, RunResult, SubjectCombatAugment } from '../types';
+import SpaceSortie from './SpaceSortie';
 import './core-drill.css';
 
 export interface CoreDrillGameProps {
@@ -17,6 +19,8 @@ export interface CoreDrillGameProps {
   onLaunch: (planetId: number, cost: number) => void;
   /** Called once when a run ends; the host banks scrap/cores and updates drill progress + missions. */
   onRunComplete: (result: RunResult) => void;
+  /** Called once when an orbital patrol ends; the host banks scrap/cores and the best wave. */
+  onSortieComplete?: (result: SortieResult) => void;
   /** Called the moment a planet's core boss dies, so the unlock is saved even if the tab closes. */
   onPlanetCleared?: (planetId: number) => void;
   /** Host deducts `cost` Tech Scrap and raises the upgrade level. */
@@ -26,7 +30,7 @@ export interface CoreDrillGameProps {
   onNavigateToFocus?: () => void;
 }
 
-type Phase = 'orbit' | 'playing' | 'result';
+type Phase = 'orbit' | 'playing' | 'result' | 'space';
 
 interface Hud {
   hull: number; maxHull: number; shield: number; maxShield: number;
@@ -93,6 +97,13 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     const pool = live.current.flashcards.length > 0 ? live.current.flashcards : FALLBACK_CARDS;
     return pool[Math.floor(Math.random() * pool.length)];
   }, []);
+
+  const launchSortie = (p: PlanetDef) => {
+    sfx.click();
+    onLaunch(p.id, sortieCost(p));
+    setPlanetId(p.id);
+    setPhase('space');
+  };
 
   const launch = (p: PlanetDef) => {
     sfx.click();
@@ -324,6 +335,20 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
   };
 
   // ------------------------------------------------------------ screens
+  if (phase === 'space') {
+    return (
+      <SpaceSortie
+        planetId={planetId}
+        profile={profile}
+        augments={augments}
+        flashcards={props.flashcards}
+        onComplete={(r) => props.onSortieComplete?.(r)}
+        onExit={() => setPhase('orbit')}
+        onOverrideSuccess={props.onOverrideSuccess}
+      />
+    );
+  }
+
   if (phase === 'orbit') {
     return (
       <div className="cd-root cd-orbit">
@@ -361,18 +386,29 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
                       <p className="cd-planet-blurb">{p.blurb}</p>
                       <div className="cd-planet-meta">
                         <span>Best depth {save.bestDepth[p.id] ?? 0} m</span>
+                        <span>Best wave {save.bestWave?.[p.id] ?? 0}</span>
                         <span>Core: {p.bossName} (~{coreDepth(p)} m)</span>
                         <span>Ore ×{p.scrapMult.toFixed(1)}</span>
                       </div>
                     </div>
-                    <button
-                      className="cd-btn cd-btn-launch"
-                      disabled={!unlocked || !affordable}
-                      onClick={() => launch(p)}
-                      title={!unlocked ? 'Locked' : !affordable ? 'Not enough Focus Energy — study to earn more' : ''}
-                    >
-                      {unlocked ? (affordable ? `Launch · ${p.launchCost} EN` : `Need ${p.launchCost} EN`) : 'Locked'}
-                    </button>
+                    <div className="cd-launch-col">
+                      <button
+                        className="cd-btn cd-btn-launch"
+                        disabled={!unlocked || !affordable}
+                        onClick={() => launch(p)}
+                        title={!unlocked ? 'Locked' : !affordable ? 'Not enough Focus Energy — study to earn more' : 'Dig into the abandoned mine'}
+                      >
+                        {unlocked ? (affordable ? `Dig · ${p.launchCost} EN` : `Need ${p.launchCost} EN`) : 'Locked'}
+                      </button>
+                      <button
+                        className="cd-btn cd-btn-patrol"
+                        disabled={!unlocked || profile.focusEnergy < sortieCost(p)}
+                        onClick={() => launchSortie(p)}
+                        title="Fly an orbital patrol: a space fight above this planet"
+                      >
+                        Patrol · {sortieCost(p)} EN
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -439,6 +475,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
             </div>
           </section>
         </div>
+        <p className="cd-credits">UI art: Crusenho, CC BY 4.0 (crusenho.itch.io) · Space sprites: Matt Walkden, CC0 (mattwalkden.itch.io) · Source and credits in the repo's CREDITS.md</p>
       </div>
     );
   }

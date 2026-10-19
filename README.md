@@ -119,3 +119,5 @@ NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot p
 An endless mining game with combat, built for the StudyOps study app. **Just open `core-drill.html` in a browser** (double-click, no install, works offline apart from fonts). Reopen the abandoned mines of five worlds: dig down level by level through timber drifts and steel plate floors, fight tunnelling worms, brutes, sentries and bosses, and see only as far as your headlamp reaches. After a planet's core boss you can warp to the next world or stay and dig deeper forever. Progress saves in your browser; "+ Simulate study session" earns Focus Energy like studying would. Source, tests and the StudyOps integration script live in [`core-drill/`](core-drill/README.md).
 
 Controls: `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse/`Space` fire, `B` bomb, `F` flashcard Override, `E` trade, hold `R` to recall.
+
+**New:** an *orbital patrol* mode (top-down space fight above each planet, built from the Lunar Lander sprite pack) and a pixel UI skin shared with the village. Every pack used is listed in [CREDITS.md](CREDITS.md).

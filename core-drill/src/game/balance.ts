@@ -149,6 +149,9 @@ export interface PlanetDef {
   hazardColor: string;
 }
 
+/** Focus Energy to launch an orbital patrol: cheaper than a dig, since it is a shorter, more arcade run. */
+export const sortieCost = (p: PlanetDef) => Math.round(p.launchCost * 0.6);
+
 export const bandStartDepth = (band: number) => FIRST_PLATE_DEPTH + band * BAND;
 export const coreDepth = (p: PlanetDef) => bandStartDepth(p.coreBand);
 
@@ -260,6 +263,7 @@ export const defaultDrillSave = (): DrillSave => ({
   upgrades: { drill: 0, fuel: 0, hull: 0, cargo: 0, blaster: 0, shield: 0, lamp: 0, turret: 0 },
   bestDepth: {},
   cleared: [],
+  bestWave: {},
 });
 
 /** Old saves have no `drill` field (or fewer upgrade keys); fill gaps without trusting stored shapes. */
@@ -272,6 +276,7 @@ export function normalizeDrillSave(save?: Partial<DrillSave>): DrillSave {
   }
   d.bestDepth = { ...(save.bestDepth ?? {}) };
   d.cleared = Array.isArray(save.cleared) ? [...save.cleared] : [];
+  d.bestWave = { ...(save.bestWave ?? {}) };
   return d;
 }
 

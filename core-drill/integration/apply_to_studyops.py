@@ -41,9 +41,10 @@ def main():
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir()
-    for sub in ("game", "components"):
+    for sub in ("game", "components", "space", "assets", "ui"):
         shutil.copytree(HERE / "src" / sub, dest / sub)
     shutil.copy(HERE / "src" / "types.ts", dest / "types.ts")
+    (dest / "assets.d.ts").write_text("declare module '*.png' {\n  const src: string;\n  export default src;\n}\n")
     print(f"  + copied game to {dest.relative_to(root)}")
 
     edit(src / "types" / "index.ts", [
@@ -61,9 +62,10 @@ def main():
         ("import { ArmoryModal } from './components/ArmoryModal';",
          "import { ArmoryModal } from './components/ArmoryModal';\n"
          "import CoreDrillGame from './core-drill/components/CoreDrillGame';\n"
-         "import { applyRunResult, buyUpgrade, launchPlanet, markPlanetCleared } from './core-drill/game/progress';\n"
+         "import { applyRunResult, applySortieResult, buyUpgrade, launchPlanet, markPlanetCleared } from './core-drill/game/progress';\n"
          "import { getPlanet } from './core-drill/game/balance';\n"
-         "import type { RunResult } from './core-drill/types';"),
+         "import type { RunResult } from './core-drill/types';\n"
+         "import type { SortieResult } from './core-drill/space/engine';"),
         ("params.get('view') === 'game') {\n        return 'game';\n      }",
          "params.get('view') === 'game') {\n        return 'game';\n      }\n      if (params.get('view') === 'core-drill') return 'core-drill';"),
         ("  // Handle In-Combat Zombie Kill",
@@ -103,6 +105,29 @@ def main():
     showToast(`Core Drill: +${result.scrap} Scrap · +${result.neuroCores} Cores banked`);
   };
 
+  const handleSortieComplete = (result: SortieResult) => {
+    setProfile((prev) => applySortieResult(prev, result));
+    setDailyMissions((prev) => updateMissionProgress(prev, 'game', Math.max(1, result.wave) + result.bossesDown * 5).updatedMissions);
+    setSquad((prev) => ({
+      ...prev,
+      members: prev.members.map((m) =>
+        m.id === 'player' ? { ...m, defenseContribution: m.defenseContribution + result.scrap } : m
+      ),
+      activityFeed: [
+        {
+          id: `act_${Date.now()}`,
+          memberId: 'player',
+          memberName: 'Alex (You)',
+          action: `flew an orbital patrol over ${getPlanet(result.planetId).name}: wave ${result.wave}${result.bossesDown ? `, ${result.bossesDown} boss down` : ''}`,
+          rewardDesc: `+${result.scrap} Scrap · +${result.neuroCores} Neuro-Cores`,
+          timestamp: 'Just now',
+        },
+        ...prev.activityFeed.slice(0, 5),
+      ],
+    }));
+    showToast(`Orbital patrol: +${result.scrap} Scrap · +${result.neuroCores} Cores banked`);
+  };
+
   const handleDrillRecall = () => {
     setDailyMissions((prev) => updateMissionProgress(prev, 'flashcards', 1).updatedMissions);
   };
@@ -117,6 +142,7 @@ def main():
             onLaunch={handleDrillLaunch}
             onRunComplete={handleDrillComplete}
             onPlanetCleared={(id) => setProfile((prev) => markPlanetCleared(prev, id))}
+            onSortieComplete={handleSortieComplete}
             onBuyUpgrade={(key, cost) => setProfile((prev) => buyUpgrade(prev, key, cost))}
             onOverrideSuccess={handleDrillRecall}
             onVaultSolved={handleDrillRecall}
@@ -126,6 +152,9 @@ def main():
 
         {currentView === 'flashcards' && ("""),
     ], "CoreDrillGame")
+    edit(root / "index.html", [
+        ("</head>", '    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet" />\n  </head>'),
+    ], "Silkscreen")
     print("done. Run `npm run lint && npm run build` in the StudyOps checkout.")
 
 

@@ -46,6 +46,8 @@ export interface DrillSave {
   bestDepth: Record<number, number>;
   /** planet ids whose boss was beaten */
   cleared: number[];
+  /** planet id -> best orbital-patrol wave cleared */
+  bestWave?: Record<number, number>;
 }
 
 export interface RunResult {

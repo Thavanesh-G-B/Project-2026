@@ -9,6 +9,8 @@ import { B, D, SURFACE_ROW, T, TILE } from './balance';
 import { drawBoss, drawBoulder, drawEnemy, drawItem, drawRig } from './actors';
 import type { DrillEngine } from './engine';
 import { decorLight, drawDecor, drawHazard, drawNest, getSprites, hash } from './sprites';
+import moon1Url from '../assets/lander/moon1.png';
+import moon3Url from '../assets/lander/moon3.png';
 import { backAt, decorAt, mulberry32, tileAt } from './terrain';
 
 export interface Camera { x: number; y: number; zoom: number }
@@ -20,6 +22,29 @@ const STARS = (() => {
 })();
 
 let fogCanvas: HTMLCanvasElement | null = null;
+
+// Moon-surface ridges from the lander pack, tinted to each planet and drawn behind the skyline.
+const moonImgs: Record<string, HTMLImageElement> = {};
+const moonImg = (url: string) => {
+  if (!moonImgs[url] && typeof Image !== 'undefined') { const i = new Image(); i.src = url; moonImgs[url] = i; }
+  return moonImgs[url];
+};
+const tintCache = new Map<string, HTMLCanvasElement>();
+function tinted(url: string, color: string): HTMLCanvasElement | null {
+  const key = url + color;
+  const hit = tintCache.get(key);
+  if (hit) return hit;
+  const img = moonImg(url);
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const g = c.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  g.globalCompositeOperation = 'source-atop';
+  g.fillStyle = color; g.globalAlpha = 0.78; g.fillRect(0, 0, c.width, c.height);
+  tintCache.set(key, c);
+  return c;
+}
 
 export function render(
   g: CanvasRenderingContext2D,
@@ -126,6 +151,17 @@ function drawSky(g: CanvasRenderingContext2D, eng: DrillEngine, cam: Camera, vie
   g.fillStyle = p.primary; g.globalAlpha = 0.75; g.fillRect(sx - 50, sy - 8, 14, 16); g.globalAlpha = 1;
   g.strokeStyle = p.primary; g.beginPath(); g.moveTo(sx + 36, sy); g.lineTo(sx + 44, sy - 6); g.lineTo(sx + 52, sy + 1); g.stroke();
   g.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4); g.fillStyle = '#f87171'; g.fillRect(sx - 1, sy - 17, 3, 3); g.globalAlpha = 1;
+
+  // far ridges (lander pack moon layers) behind the skyline
+  for (const [url, par, scale, lift, alpha] of [[moon3Url, 0.35, 3, 0, 0.4], [moon1Url, 0.5, 4, 0, 0.9]] as Array<[string, number, number, number, number]>) {
+    const t2 = tinted(url, p.skyBottom);
+    if (!t2) continue;
+    const w = t2.width * scale, h = t2.height * scale;
+    const shift = camPx * (1 - par);
+    g.globalAlpha = alpha;
+    for (let k = Math.floor((x0 * TILE - shift) / w) - 1; k <= Math.ceil((x1 * TILE - shift) / w); k++) g.drawImage(t2, Math.round(k * w + shift), horizon - h + lift, w, h);
+  }
+  g.globalAlpha = 1;
 
   // distant ruined skyline
   const r = mulberry32(p.id * 31);

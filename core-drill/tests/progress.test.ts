@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyRunResult, buyUpgrade, launchPlanet, markPlanetCleared } from '../src/game/progress';
+import { applyRunResult, applySortieResult, buyUpgrade, launchPlanet, markPlanetCleared } from '../src/game/progress';
+import { sortieCost, getPlanet } from '../src/game/balance';
 import type { DrillProfile, RunResult } from '../src/types';
 
 const base = (): DrillProfile => ({ focusEnergy: 100, techScrap: 500, neuroCores: 1, streakDays: 0 });
@@ -56,5 +57,19 @@ describe('profile reducers', () => {
     expect(p.drill?.upgrades.fuel).toBe(5);
     expect(buyUpgrade({ ...base(), techScrap: 1e6 }, 'turret').drill?.upgrades.turret).toBe(1);
     expect(buyUpgrade({ ...base(), techScrap: 1e6 }, 'lamp').drill?.upgrades.lamp).toBe(1);
+  });
+
+  it('banks an orbital patrol and keeps the best wave per planet', () => {
+    const r = { planetId: 2, outcome: 'retreat' as const, scrap: 200, neuroCores: 1, wave: 6, kills: 20, bossesDown: 1, crewRescued: 3, asteroids: 9 };
+    const a = applySortieResult(base(), r);
+    expect(a.techScrap).toBe(700);
+    expect(a.neuroCores).toBe(2);
+    expect(a.drill?.bestWave?.[2]).toBe(6);
+    expect(applySortieResult(a, { ...r, wave: 3, scrap: -5, neuroCores: -1 }).drill?.bestWave?.[2]).toBe(6);
+    expect(applySortieResult(a, { ...r, scrap: -5, neuroCores: -1 }).techScrap).toBe(a.techScrap);
+  });
+
+  it('a patrol costs less than a dig', () => {
+    for (const id of [1, 2, 3, 4, 5]) expect(sortieCost(getPlanet(id))).toBeLessThan(getPlanet(id).launchCost);
   });
 });

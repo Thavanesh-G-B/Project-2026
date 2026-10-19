@@ -3,6 +3,7 @@
  * setProfile callbacks (see INTEGRATION.md); the harness uses them directly.
  */
 import { normalizeDrillSave, UPGRADES, upgradeCost } from './balance';
+import type { SortieResult } from '../space/engine';
 import type { DrillProfile, DrillUpgradeKey, RunResult } from '../types';
 
 /** Deduct the launch cost. Never goes below zero. */
@@ -45,4 +46,17 @@ export function buyUpgrade<P extends DrillProfile>(p: P, key: DrillUpgradeKey, _
   const cost = upgradeCost(def, lvl);
   if (lvl >= def.max || p.techScrap < cost) return p;
   return { ...p, techScrap: p.techScrap - cost, drill: { ...drill, upgrades: { ...drill.upgrades, [key]: lvl + 1 } } };
+}
+
+/** Bank a finished orbital patrol: currencies and the best wave per planet. */
+export function applySortieResult<P extends DrillProfile>(p: P, r: SortieResult): P {
+  const drill = normalizeDrillSave(p.drill);
+  const bestWave = { ...(drill.bestWave ?? {}) };
+  bestWave[r.planetId] = Math.max(bestWave[r.planetId] ?? 0, Math.max(0, Math.floor(r.wave)));
+  return {
+    ...p,
+    techScrap: p.techScrap + Math.max(0, r.scrap),
+    neuroCores: p.neuroCores + Math.max(0, r.neuroCores),
+    drill: { ...drill, bestWave },
+  };
 }

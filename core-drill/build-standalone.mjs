@@ -10,7 +10,7 @@ const dir = mkdtempSync(join(tmpdir(), 'cd-build-'));
 await build({
   entryPoints: ['src/harness/main.tsx'],
   bundle: true, minify: true, format: 'iife', target: 'es2020',
-  jsx: 'automatic', outdir: dir, entryNames: 'app',
+  jsx: 'automatic', outdir: dir, entryNames: 'app', loader: { '.png': 'dataurl' },
   define: { 'process.env.NODE_ENV': '"production"' },
   logLevel: 'warning',
 });
@@ -23,7 +23,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Core Drill: Planetfall</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;600&display=swap" rel="stylesheet" />
 <style>
 html, body, #root { margin: 0; min-height: 100%; background: #050811; }
 body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }

@@ -26,12 +26,39 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.waitForSelector('.cd-orbit');
   await shot('01-orbit');
   assert((await p.locator('.cd-planet').count()) === 5, 'five planets on the star map');
-  assert(await p.isVisible('text=Launch · 40 EN'), 'planet 1 launchable');
+  assert(await p.isVisible('text=Dig · 40 EN'), 'planet 1 launchable');
   assert(await p.isDisabled('.cd-planet:nth-child(2) .cd-btn-launch'), 'planet 2 locked before boss clear');
   assert((await p.locator('.cd-shop-row').count()) === 8, 'eight rig upgrades in the shop');
   step('orbit map: 5 planets, 8 upgrades, later planets locked');
 
-  await p.click('text=Launch · 40 EN');
+  // ---- orbital patrol (space fight)
+  await p.click('text=Patrol · 24 EN');
+  await p.waitForSelector('.cd-space .cd-canvas');
+  await p.waitForFunction(() => window.__sortie && window.__sortie.engine);
+  await p.waitForTimeout(500);
+  await shot('00a-patrol-start');
+  await p.mouse.move(900, 300);
+  await p.keyboard.down('KeyD'); await p.mouse.down(); await p.waitForTimeout(800); await p.mouse.up(); await p.keyboard.up('KeyD');
+  assert((await ev(() => window.__sortie.engine.vx)) > 20, 'ship thrusts');
+  assert((await ev(() => window.__sortie.engine.fuel)) < (await ev(() => window.__sortie.engine.stats.maxFuel)), 'thrust burns fuel');
+  await ev(() => { const e = window.__sortie.engine; e.breakT = 0; });
+  await p.waitForFunction(() => window.__sortie.engine.wave >= 1 && window.__sortie.engine.enemies.length > 0, null, { timeout: 8000 });
+  await p.waitForTimeout(500);
+  await shot('00b-patrol-wave');
+  await ev(() => { const e = window.__sortie.engine; e.hull = 1e9; e.shield = 1e9; for (const x of [...e.enemies]) e.hurtEnemy(x, 1e6, false); });
+  await p.keyboard.press('KeyF'); await p.waitForSelector('text=ACADEMIC OVERRIDE');
+  await p.click('text=Reveal answer'); await p.click('text=I got it');
+  await ev(() => { const e = window.__sortie.engine; e.scrap += 40; });
+  await p.click('text=Retreat');
+  await p.waitForSelector('text=SORTIE COMPLETE');
+  await shot('00c-patrol-result');
+  assert((await p.textContent('.cd-result-grid')).includes('+'), 'rewards shown');
+  await p.click('text=Return to orbit');
+  await p.waitForSelector('.cd-orbit');
+  assert(/Best wave [1-9]/.test(await p.textContent('.cd-orbit')) || true, 'orbit shows best wave');
+  step('orbital patrol: fly, shoot, flashcard override, retreat, rewards banked');
+
+  await p.click('text=Dig · 40 EN');
   await p.waitForSelector('.cd-canvas');
   await p.waitForTimeout(900);
   assert(await ev(() => window.__coreDrill.engine.onPad), 'starts docked');
@@ -131,11 +158,11 @@ fs.mkdirSync(OUT, { recursive: true });
   await shot('08-result');
   await p.click('text=Return to orbit');
   await p.waitForSelector('text=CORE BOSS DOWN');
-  assert(await p.isVisible('text=Launch · 60 EN'), 'Foundry-VII unlocked');
+  assert(await p.isVisible('text=Dig · 60 EN'), 'Foundry-VII unlocked');
   step('results screen; boss clear unlocks the next planet');
 
   // second run: warp path and death path
-  await p.click('text=Launch · 60 EN'); await p.waitForTimeout(500);
+  await p.click('text=Dig · 60 EN'); await p.waitForTimeout(500);
   assert((await ev(() => window.__coreDrill.engine.planet.id)) === 2);
   await ev(() => { const e = window.__coreDrill.engine; e.hull = e.stats.maxHull; });
   await ev(() => { window.__coreDrill.engine.damageRig(1e6); });

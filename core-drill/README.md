@@ -1,6 +1,6 @@
 # Core Drill: Planetfall
 
-A break-room arcade game for the **StudyOps** app. You pilot a mining rig into the **abandoned mines of five dead worlds**: timber drifts with rails and dead lamps, rusting plated floors, nests of glitches, and bosses at the bottom. The mine is **endless**: dig as deep as your fuel, your nerve and your headlamp allow. Everything you earn feeds the Armory.
+A break-room arcade game for the **StudyOps** app, with two modes: **dig** into abandoned mines, or fly an **orbital patrol** above the planet. You pilot a mining rig into the **abandoned mines of five dead worlds**: timber drifts with rails and dead lamps, rusting plated floors, nests of glitches, and bosses at the bottom. The mine is **endless**: dig as deep as your fuel, your nerve and your headlamp allow. Everything you earn feeds the Armory.
 
 ![surface](docs/surface.jpg)
 ![drift](docs/digging.jpg)
@@ -14,7 +14,19 @@ Open **`../core-drill.html`** (repo root) in a browser: one self-contained file,
 
 Controls: `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse or `Space` fire, `B` bomb, `F` flashcard Override, `E` trade with a derelict trader, hold `R` to recall (25% fee away from the pad). Touch devices get an on-screen pad.
 
-## How a run works
+## Orbital patrol (space fight)
+
+From the star map, each unlocked planet has a **Patrol** button (60% of the dig's Focus Energy). You fly a lander-style ship in a top-down arena above the planet: thrust and drift with inertia, aim with the mouse, and watch the fuel gauge.
+
+- **Waves** of scouts (kamikaze), fighters (strafe and shoot), gunships (circle and fan fire), heavies (twin cannons plus homing missiles). A **boss cruiser** arrives every fifth wave, using the same attack patterns as the planet's mine boss (rings, aimed fans, charge, beam sweep, mines, spiral, summons) and gets stronger each time.
+- **Asteroids** drift through the arena, break into smaller rocks when shot (and hurt when you ram them) and drop fuel, scrap and cores.
+- **Crew pods** drift in from wrecks; rescue three for a Neuro-Core.
+- **Controls:** `WASD` thrust, `Shift` boost (double fuel), mouse aim, click or `Space` fire, `B`/`Q` or right-click fire a homing missile, `F` flashcard Override (EMP), hold `R` to retreat and keep your haul.
+- Your rig upgrades carry over: hull and shield, blaster damage and rate, fuel tank, subject augments (the Math scanner widens the radar), and the ship's look changes with hull level (blue fighter, gunship, heavy).
+- Destroyed: you keep half. Retreat: you keep everything. Best wave per planet is saved.
+- Art: the CC0 Lunar Lander pack (ships, weapons, asteroids, effects, HUD bars and radar).
+
+## How a dig run works
 
 - **Levels.** Below 12 m of topsoil the mine is built from 16-row levels. Each has a riveted **steel plate floor** (8 s to drill, or a bomb) with a few **ladder shafts**, a **timber drift** (rails, lamps, carts, crates, pipes, cobwebs), and ore-bearing crust with caves, hazard pockets, nests, flashcard vaults and sealed treasure rooms. You cannot just tunnel straight down: find a shaft, bomb the plate, or pay in fuel.
 - **Relays** (every third level) sell your ore and refuel you 50% once. The **pad** at the surface always does. Crates drop fuel, repair kits, bombs, shield cells, scrap and cores.
@@ -64,7 +76,7 @@ Cave-in **tremors** drop telegraphed boulders (a 1-wide shaft is a bowling alley
 cd core-drill
 npm install
 npm run dev              # standalone harness with a mock profile -> http://localhost:5174
-npm test                 # 79 unit tests: terrain, flow field, AI, worms, bosses, loot, economy, reducers
+npm test                 # 102 unit tests: terrain, flow field, AI, worms, bosses, loot, economy, reducers, space fight
 npm run lint             # tsc --noEmit
 npm run build:standalone # rebuilds ../core-drill.html (esbuild, one file)
 NODE_PATH=<global node_modules> node tests/e2e/playtest.cjs 'http://127.0.0.1:5174/?debug=1&aug=math,cs&fresh=1' out/
@@ -81,9 +93,16 @@ cd /path/to/studyops && npm run lint && npm run build
 
 Copies the game to `src/core-drill/` and patches `types/index.ts` (`drill?` on the profile, a `'core-drill'` view), `Header.tsx` (a tab) and `App.tsx` (handlers, mission and squad hooks, `?view=core-drill`). Every edit anchors on text that must appear exactly once, so a drifted app fails loudly. Verified on the uploaded StudyOps build: `tsc` and `vite build` pass.
 
-## Layout
+## Layout (additions)
 
 ```
+src/space/            orbital patrol: engine.ts (waves, ships, boss, asteroids), render.ts (sprites, HUD, radar), assets.ts
+src/assets/lander/    CC0 lander pack sprites (copied by tools/build_assets.py)
+src/ui/               pixel UI skin (CC BY 4.0, recoloured) + pixel-ui.css; originals in src/ui/original/
+tools/build_assets.py rebuilds the sprites and recoloured UI from the uploaded packs
+```
+
+## Layout
 src/game/balance.ts   planets, rosters, tiles, upgrades, rig stats, light radius, rewards
 src/game/terrain.ts   endless deterministic mine generation (bands, drifts, plates, relays, rooms, boss sites)
 src/game/flow.ts      flow field over open tiles for enemy pathing
@@ -98,3 +117,7 @@ src/harness/          standalone page
 tests/                vitest suites + e2e/playtest.cjs
 integration/          apply_to_studyops.py
 ```
+
+## Credits
+
+See [`../CREDITS.md`](../CREDITS.md): UI art by Crusenho (CC BY 4.0, recoloured), spaceships and effects by Matt Walkden (CC0).

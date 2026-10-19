@@ -1,0 +1,54 @@
+/*
+ * Pixel UI skin built from "Complete UI Essential Pack (Free)" by Crusenho (CC BY 4.0, https://crusenho.itch.io).
+ * The pack's cream/grey faces are recoloured by tools/build_assets.py so they sit on a dark background.
+ * Everything is 9-sliced with border-image and scaled by whole numbers so the pixels stay square.
+ */
+:root {
+  --px-ink: #1b140c;
+  --px-font: 'Silkscreen', 'Chakra Petch', ui-monospace, monospace;
+}
+
+.px-btn, .px-panel, .px-slot, .px-banner, .px-input, .px-bar { image-rendering: pixelated; box-sizing: border-box; }
+
+/* ---------- buttons: 32px art, 8px corners, drawn at 2x ---------- */
+.px-btn {
+  --b: url('./btn_blue.png'); --bh: url('./btn_blue_hover.png'); --bd: url('./btn_blue_down.png'); --fg: #fff;
+  border: 0; border-style: solid; border-width: 16px; padding: 0 4px; margin: 0;
+  border-image: var(--b) 8 fill / 16px stretch;
+  background: none; color: var(--fg); font-family: var(--px-font); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; line-height: 1.1;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  cursor: pointer; min-height: 32px; min-width: 40px; transform: none !important; filter: none !important;
+}
+.px-btn:hover:not(:disabled) { border-image-source: var(--bh); }
+.px-btn:active:not(:disabled) { border-image-source: var(--bd); }
+.px-btn:disabled { filter: grayscale(0.85) brightness(0.8) !important; opacity: 0.7; cursor: not-allowed; }
+.px-btn.blue   { --b: url('./btn_blue.png');   --bh: url('./btn_blue_hover.png');   --bd: url('./btn_blue_down.png');   --fg: #fff; }
+.px-btn.orange { --b: url('./btn_orange.png'); --bh: url('./btn_orange_hover.png'); --bd: url('./btn_orange_down.png'); --fg: var(--px-ink); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35); }
+.px-btn.green  { --b: url('./btn_green.png');  --bh: url('./btn_green_hover.png');  --bd: url('./btn_green_down.png');  --fg: #fff; }
+.px-btn.red    { --b: url('./btn_red.png');    --bh: url('./btn_red_hover.png');    --bd: url('./btn_red_down.png');    --fg: #fff; }
+.px-btn.grey   { --b: url('./btn_grey.png');   --bh: url('./btn_grey_hover.png');   --bd: url('./btn_grey_down.png');   --fg: var(--px-ink); text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4); }
+.px-btn.dark   { --b: url('./btn_dark.png');   --bh: url('./btn_dark_hover.png');   --bd: url('./btn_dark_down.png');   --fg: #cfe3ff; }
+.px-btn.sm { border-width: 8px; border-image-width: 8px; min-height: 16px; font-size: 10px; border-image-slice: 8 fill; }
+
+/* ---------- panels: 96x64 frames, 12px corners ---------- */
+.px-panel { border: 0; border-style: solid; border-width: 24px; border-image: url('./panel_dark.png') 12 fill / 24px stretch; background: none; }
+.px-panel.thin { border-width: 12px; border-image-width: 12px; }
+.px-panel.dark { border-image-source: url('./panel_dark.png'); }
+.px-panel.mid { border-image-source: url('./panel_mid.png'); }
+.px-panel.blue { border-image-source: url('./panel_blue.png'); }
+.px-panel.orange { border-image-source: url('./panel_orange.png'); }
+.px-panel.grey { border-image-source: url('./panel_grey.png'); }
+
+/* slots: 32px recessed squares (cards, chips) */
+.px-slot { border: 0; border-style: solid; border-width: 12px; border-image: url('./slot_dark.png') 8 fill / 12px stretch; background: none; }
+.px-slot.blue { border-image-source: url('./slot_blue.png'); }
+.px-slot.orange { border-image-source: url('./slot_orange.png'); }
+
+/* banners: cream ribbons for titles (dark text) */
+.px-banner { border: 0; border-style: solid; border-width: 16px 24px; border-image: url('./banner.png') 8 12 fill / 16px 24px stretch; background: none; color: var(--px-ink); font-family: var(--px-font); text-transform: uppercase; letter-spacing: 0.05em; }
+.px-banner.bad { filter: hue-rotate(-30deg) saturate(1.4); }
+
+/* text input: cream field */
+.px-input { border: 0; border-style: solid; border-width: 12px 14px; border-image: url('./input.png') 6 8 fill / 12px 14px stretch; background: none; color: var(--px-ink); font-family: ui-monospace, monospace; font-size: 13px; outline: none; }
+.px-input::placeholder { color: rgba(27, 20, 12, 0.5); }
+
