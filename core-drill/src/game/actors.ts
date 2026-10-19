@@ -29,103 +29,201 @@ function glow(g: G, x: number, y: number, r: number, color: string, alpha = 0.6)
 
 // ----------------------------------------------------------------- rig
 
+const BODY = '#f0a818', BODY_HI = '#ffd978', BODY_LO = '#b8700c', STEEL = '#5b6677', STEEL_HI = '#8d99ab', DARK = '#161c27';
+
+/** The mining rig: a tracked heavy digger. Its look follows the upgrades you bought (drill bit, plating, turret, lamps, hopper). */
 export function drawRig(g: G, eng: DrillEngine, aim: { x: number; y: number } | null, t: number) {
   const p = eng.planet;
+  const L = eng.stats.look;
   const cx = eng.x * TILE, cy = eng.y * TILE;
+  const f = eng.facing;
+  const moving = Math.abs(eng.vx) > 0.4;
+  const hullFrac = eng.hull / eng.stats.maxHull;
   g.save();
   g.translate(cx, cy);
 
+  // ---- thruster flames (side pods)
   if (eng.thrusting) {
-    const fl = 9 + Math.random() * 8;
-    const gr = g.createLinearGradient(0, 10, 0, 10 + fl + 8);
-    gr.addColorStop(0, '#fff'); gr.addColorStop(0.35, '#7dd3fc'); gr.addColorStop(1, 'rgba(56,189,248,0)');
-    g.fillStyle = gr;
-    g.beginPath(); g.moveTo(-7, 10); g.lineTo(7, 10); g.lineTo(0, 10 + fl + 8); g.closePath(); g.fill();
+    for (const sx of [-1, 1]) {
+      const fl = 8 + Math.random() * 7;
+      const gr = g.createLinearGradient(0, 8, 0, 8 + fl + 6);
+      gr.addColorStop(0, '#fff'); gr.addColorStop(0.35, '#7dd3fc'); gr.addColorStop(1, 'rgba(56,189,248,0)');
+      g.fillStyle = gr;
+      g.beginPath(); g.moveTo(sx * 13 - 3, 8); g.lineTo(sx * 13 + 3, 8); g.lineTo(sx * 13, 8 + fl + 6); g.closePath(); g.fill();
+    }
   }
 
-  // drill (spiral cone) toward the dig target
+  // ---- everything below is drawn for a rig facing right and mirrored when facing left
+  g.save();
+  g.scale(f, 1);
+
+  // exhaust smoke from the stack: heavier while digging or climbing
+  const working = eng.digging || eng.thrusting || moving;
+  for (let i = 0; i < 3; i++) {
+    const k = ((t * (working ? 1.6 : 0.7)) + i / 3) % 1;
+    g.globalAlpha = (1 - k) * (working ? 0.5 : 0.22);
+    g.fillStyle = '#9ca3af';
+    g.beginPath(); g.arc(-11 - k * 4, -18 - k * 12, 1.5 + k * 3.2, 0, 7); g.fill();
+  }
+  g.globalAlpha = 1;
+
+  // ---- tracks with road wheels
+  g.fillStyle = DARK; rrect(g, -17, 3, 34, 11, 5.5); g.fill();
+  g.strokeStyle = '#2b3442'; g.lineWidth = 1;
+  const roll = (eng.x * 16) % 4;
+  for (let i = -15; i < 16; i += 4) { g.beginPath(); g.moveTo(i + roll, 3.5); g.lineTo(i + roll, 5.2); g.moveTo(i + roll, 11.8); g.lineTo(i + roll, 13.5); g.stroke(); }
+  for (const wx of [-11, -4, 3, 10]) {
+    g.fillStyle = STEEL; g.beginPath(); g.arc(wx, 8.5, 3.3, 0, 7); g.fill();
+    g.strokeStyle = DARK; g.lineWidth = 1; g.stroke();
+    g.strokeStyle = STEEL_HI; g.lineWidth = 0.9;
+    const a = (eng.x * 0.6 + wx) % 6.28;
+    g.beginPath(); g.moveTo(wx, 8.5); g.lineTo(wx + Math.cos(a) * 2.6, 8.5 + Math.sin(a) * 2.6); g.stroke();
+  }
+  g.fillStyle = BODY_LO; g.fillRect(-12, 3, 24, 2); // track guard
+  g.fillStyle = BODY; g.fillRect(-12, 1.5, 24, 1.8);
+
+  // ---- hull: engine bay, chassis, hood
+  const hull = g.createLinearGradient(0, -10, 0, 4);
+  hull.addColorStop(0, BODY_HI); hull.addColorStop(0.35, BODY); hull.addColorStop(1, BODY_LO);
+  g.fillStyle = hull;
+  rrect(g, -15, -9, 14, 12, 2.5); g.fill();           // engine bay (rear)
+  g.strokeStyle = DARK; g.lineWidth = 1.1; g.stroke();
+  rrect(g, -1, -3, 17, 8, 2); g.fill(); g.stroke();   // chassis and hood
+  g.beginPath(); g.moveTo(9, -3); g.lineTo(16, -1); g.lineTo(16, 5); g.lineTo(9, 5); g.closePath(); g.fill(); g.stroke(); // sloped nose
+  // armour plates grow with hull upgrades
+  for (let i = 0; i < Math.min(L.hull, 5); i++) {
+    g.fillStyle = i % 2 ? STEEL : STEEL_HI;
+    g.fillRect(-14 + i * 3.4, -8.2, 2.8, 2.2);
+  }
+  if (L.hull >= 3) { g.fillStyle = STEEL; g.fillRect(3, 3.2, 12, 1.8); }
+  // hazard band and rivets
+  g.save(); g.beginPath(); g.rect(-14, 0.5, 29, 2.2); g.clip();
+  for (let x = -18; x < 20; x += 5) { g.fillStyle = DARK; g.beginPath(); g.moveTo(x, 2.7); g.lineTo(x + 2.5, 2.7); g.lineTo(x + 5.5, 0.5); g.lineTo(x + 3, 0.5); g.closePath(); g.fill(); }
+  g.restore();
+  g.fillStyle = BODY_HI; for (const [rx, ry] of [[-13, -7], [-3, -7], [1, -2], [14, 0]]) g.fillRect(rx, ry, 1, 1);
+  // engine grille and vent glow while working
+  g.fillStyle = DARK; g.fillRect(-13, -4.8, 8, 4);
+  g.strokeStyle = working ? '#fb923c' : '#475569'; g.lineWidth = 0.9;
+  for (let i = 0; i < 4; i++) { g.beginPath(); g.moveTo(-12.5, -4.2 + i); g.lineTo(-5.5, -4.2 + i); g.stroke(); }
+  // exhaust stack
+  g.fillStyle = STEEL; g.fillRect(-12.5, -15, 3, 7); g.fillStyle = DARK; g.fillRect(-13, -16, 4, 1.8);
+
+  // ---- ore hopper on the engine bay deck: the heap grows as you fill the cargo hold
+  const fill = Math.min(1, Math.max(0, (eng.cargo.scrapOre + eng.cargo.crystal + eng.cargo.core) / Math.max(1, eng.stats.cargoCap)));
+  g.fillStyle = '#2a3342'; g.beginPath(); g.moveTo(-15.5, -9); g.lineTo(-14.5, -13); g.lineTo(-6.5, -13); g.lineTo(-5.5, -9); g.closePath(); g.fill();
+  g.strokeStyle = DARK; g.lineWidth = 1; g.stroke();
+  if (fill > 0.04) {
+    const n = Math.ceil(fill * 6);
+    for (let i = 0; i < n; i++) {
+      const hx = -13.5 + (i % 3) * 3.2, hy = -13.2 - Math.floor(i / 3) * 2.2 - (i % 2) * 0.6;
+      g.fillStyle = i % 3 === 0 && eng.cargo.crystal > 0 ? '#e879f9' : i % 4 === 3 && eng.cargo.core > 0 ? '#34d399' : '#eab308';
+      g.beginPath(); g.arc(hx + 1, hy, 1.9, 0, 7); g.fill();
+      g.fillStyle = 'rgba(255,255,255,0.55)'; g.fillRect(hx + 0.2, hy - 1, 0.9, 0.9);
+    }
+  }
+
+  // ---- cabin: roll cage, glass, pilot
+  g.fillStyle = BODY; rrect(g, 0, -13, 12, 11, 2); g.fill();
+  g.strokeStyle = DARK; g.lineWidth = 1.1; g.stroke();
+  const glass = g.createLinearGradient(2, -12, 10, -4);
+  glass.addColorStop(0, '#d6f4ff'); glass.addColorStop(0.5, '#38bdf8'); glass.addColorStop(1, '#0c4a6e');
+  g.fillStyle = glass; rrect(g, 2, -11.5, 8, 7, 1.5); g.fill();
+  g.fillStyle = 'rgba(255,255,255,0.45)'; g.beginPath(); g.moveTo(3, -11); g.lineTo(5.5, -11); g.lineTo(3.5, -6); g.lineTo(3, -6); g.closePath(); g.fill();
+  g.fillStyle = 'rgba(12,20,32,0.7)'; g.beginPath(); g.arc(5.5, -7.6, 1.9, 0, 7); g.fill(); g.fillRect(4, -6.2, 3, 2); // pilot
+  g.fillStyle = '#facc15'; g.fillRect(4.5, -8.6, 2, 0.8); // helmet lamp
+  g.strokeStyle = DARK; g.lineWidth = 1; g.beginPath(); g.moveTo(2, -4.5); g.lineTo(10, -4.5); g.moveTo(6, -11.5); g.lineTo(6, -4.5); g.stroke();
+
+  // roof: rotating beacon and the floodlight bar (more lamps with Headlamp upgrades)
+  g.fillStyle = STEEL; g.fillRect(1, -14.6, 10, 1.6);
+  const lamps = 2 + Math.min(L.lamp, 4);
+  for (let i = 0; i < lamps; i++) {
+    const lx = 1.6 + i * (8.4 / Math.max(1, lamps - 1)); g.fillStyle = '#fef9c3'; g.fillRect(lx - 0.7, -15.8, 1.4, 1.4);
+  }
+  glow(g, 12, -13, 9 + L.lamp * 1.4, '#fef08a', 0.28);
+  const beacon = Math.floor(t * 3) % 2;
+  g.fillStyle = beacon ? '#f97316' : '#7c2d12'; g.fillRect(-1, -16.3, 2.4, 2); if (beacon) glow(g, 0.2, -15.4, 7, '#fb923c', 0.55);
+
+  // headlight on the nose
+  g.fillStyle = '#fef9c3'; g.fillRect(15, 0, 1.6, 2.4); glow(g, 17, 1.2, 8, '#fef08a', 0.4);
+
+  // damage: smoke and sparks when the hull is low, scratches when worn
+  if (hullFrac < 0.6) { g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(4, -3); g.lineTo(7, 0); g.lineTo(5, 3); g.moveTo(-9, -7); g.lineTo(-6, -4); g.stroke(); }
+  g.restore(); // un-mirror
+
+  // ---- boom arm and drill: points where you are digging, rests forward when idle
+  let ang = f > 0 ? 0.35 : Math.PI - 0.35;
+  let reach = 0.55;
   if (eng.digTarget) {
     const dx = eng.digTarget.x + 0.5 - eng.x, dy = eng.digTarget.y + 0.5 - eng.y;
-    const ang = Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? Math.PI / 2 : -Math.PI / 2) : (dx > 0 ? 0 : Math.PI);
-    g.save();
-    g.rotate(ang);
-    const grd = g.createLinearGradient(8, 0, 26, 0);
-    grd.addColorStop(0, '#6b7280'); grd.addColorStop(1, '#e5e7eb');
-    g.fillStyle = grd;
-    g.beginPath(); g.moveTo(8, -8.5); g.lineTo(26, 0); g.lineTo(8, 8.5); g.closePath(); g.fill();
-    g.strokeStyle = '#111827'; g.lineWidth = 1.6;
-    for (let i = 0; i < 4; i++) {
-      const o = (t * 46 + i * 4.4) % 17;
-      const w = 8.5 * (1 - o / 18);
-      g.beginPath(); g.moveTo(8 + o, -w); g.lineTo(8 + o + 3, w); g.stroke();
-    }
-    g.restore();
-    glow(g, Math.cos(ang) * 22, Math.sin(ang) * 22, 10, '#fde68a', 0.5);
+    ang = Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? Math.PI / 2 : -Math.PI / 2) : (dx > 0 ? 0 : Math.PI);
+    reach = 1;
   }
+  const dir = Math.cos(ang) >= 0 ? 1 : -1;
+  const down = Math.sin(ang) > 0.7;
+  const baseX = down ? dir * 1 : dir * 13, baseY = down ? 7 : 3;
+  const drillLen = (11 + L.drill * 0.8) * reach;
+  g.save();
+  g.translate(baseX, baseY);
+  g.rotate(ang);
+  // hydraulic boom: piston and sleeve
+  g.fillStyle = STEEL; rrect(g, -1, -2.6, 8 * Math.max(reach, 0.7), 5.2, 1.5); g.fill();
+  g.strokeStyle = DARK; g.lineWidth = 0.9; g.stroke();
+  g.fillStyle = STEEL_HI; g.fillRect(1, -1.4, 6 * Math.max(reach, 0.7), 1.2);
+  g.fillStyle = '#e5e7eb'; g.fillRect(6 * Math.max(reach, 0.7), -1.6, 3 + drillLen * 0.15, 3.2);
+  // drill bit: conical, spiral flutes; larger and shinier with upgrades
+  const bitStart = 8 * Math.max(reach, 0.7), bitW = 4.6 + L.drill * 0.55;
+  const steel = g.createLinearGradient(0, -bitW, 0, bitW);
+  steel.addColorStop(0, '#f3f4f6'); steel.addColorStop(0.5, '#9ca3af'); steel.addColorStop(1, '#4b5563');
+  g.fillStyle = steel;
+  g.beginPath(); g.moveTo(bitStart, -bitW); g.lineTo(bitStart + drillLen * 0.9, 0); g.lineTo(bitStart, bitW); g.closePath(); g.fill();
+  g.strokeStyle = DARK; g.lineWidth = 0.9; g.stroke();
+  g.strokeStyle = 'rgba(17,24,39,0.8)'; g.lineWidth = 1.3;
+  const spin = eng.digging ? t * 40 : 0;
+  for (let i = 0; i < 4; i++) {
+    const o = ((spin + i * 4.2) % 17) / 17;
+    const sx = bitStart + o * drillLen * 0.78, w = bitW * (1 - o * 0.9);
+    g.beginPath(); g.moveTo(sx, -w); g.lineTo(sx + 2.4, w); g.stroke();
+  }
+  const tip = L.drill >= 5 ? '#fde047' : L.drill >= 3 ? '#67e8f9' : '#d1d5db';
+  g.fillStyle = tip; g.beginPath(); g.arc(bitStart + drillLen * 0.9, 0, 1.6 + L.drill * 0.12, 0, 7); g.fill();
+  if (eng.digging) {
+    glow(g, bitStart + drillLen * 0.9, 0, 11, '#fde68a', 0.55);
+    for (let i = 0; i < 3; i++) { const k = (t * 9 + i * 0.33) % 1; g.fillStyle = `rgba(255,${200 - i * 30},90,${1 - k})`; g.fillRect(bitStart + drillLen * 0.9 + k * 6, (i - 1) * 3 * k - 0.5, 1.6, 1.6); }
+  }
+  g.restore();
 
-  // tracks
-  g.fillStyle = '#0a0f1a';
-  rrect(g, -15, 4, 30, 10, 5); g.fill();
-  g.strokeStyle = '#475569'; g.lineWidth = 1;
-  const roll = (eng.x * 14) % 5;
-  for (let i = -13; i < 14; i += 5) { g.beginPath(); g.moveTo(i + roll, 5); g.lineTo(i + roll, 13); g.stroke(); }
-  g.fillStyle = '#1f2937';
-  for (const wx of [-10, 0, 10]) { g.beginPath(); g.arc(wx, 9, 3.2, 0, 7); g.fill(); g.strokeStyle = '#6b7280'; g.stroke(); }
-
-  // hull
-  const hg = g.createLinearGradient(0, -13, 0, 8);
-  hg.addColorStop(0, '#cbd5e1'); hg.addColorStop(0.45, '#94a3b8'); hg.addColorStop(1, '#475569');
-  g.fillStyle = hg;
-  rrect(g, -13, -10, 26, 17, 5); g.fill();
-  g.strokeStyle = '#0f172a'; g.lineWidth = 1.2; g.stroke();
-  // stripe + panel lines
-  g.fillStyle = p.primary; g.fillRect(-13, -2, 26, 2.2);
-  g.strokeStyle = 'rgba(15,23,42,0.5)'; g.beginPath(); g.moveTo(-4, -10); g.lineTo(-4, 7); g.moveTo(6, -10); g.lineTo(6, 7); g.stroke();
-  g.fillStyle = '#fbbf24'; g.fillRect(8, 2, 3, 2); // hazard tag
-
-  // cockpit dome
-  const cg = g.createRadialGradient(eng.facing * 3 - 1, -9, 1, eng.facing * 3, -7, 8);
-  cg.addColorStop(0, '#e0f7ff'); cg.addColorStop(0.6, '#38bdf8'); cg.addColorStop(1, '#0c4a6e');
-  g.fillStyle = cg;
-  g.beginPath(); g.ellipse(eng.facing * 3, -7, 8, 6.2, 0, Math.PI, 0); g.fill();
-  g.strokeStyle = '#0f172a'; g.lineWidth = 1; g.stroke();
-  // pilot silhouette
-  g.fillStyle = 'rgba(15,23,42,0.55)'; g.beginPath(); g.arc(eng.facing * 3, -8.4, 2.4, 0, 7); g.fill();
-
-  // antenna + beacon
-  g.strokeStyle = '#9ca3af'; g.lineWidth = 1; g.beginPath(); g.moveTo(-8, -10); g.lineTo(-10, -17); g.stroke();
-  g.fillStyle = Math.floor(t * 2) % 2 ? '#f87171' : '#7f1d1d'; g.fillRect(-11.5, -19, 3, 3);
-
-  // headlamp
-  const lampX = eng.facing * 13;
-  g.fillStyle = '#fef9c3'; g.fillRect(lampX - (eng.facing > 0 ? 0 : 3), -4, 3, 3);
-  glow(g, lampX + eng.facing * 4, -2.5, 10, '#fef08a', 0.35);
-
-  // blaster toward aim
-  let ba = eng.facing > 0 ? 0 : Math.PI;
+  // ---- roof gun on a swivel; barrel grows with blaster upgrades
+  let ba = f > 0 ? 0 : Math.PI;
   if (aim) ba = Math.atan2(aim.y - (eng.y - 0.1), aim.x - eng.x);
   g.save();
-  g.translate(0, -5);
+  g.translate(f * 5, -15.6);
+  g.fillStyle = STEEL; g.beginPath(); g.arc(0, 1, 3.4, Math.PI, 0); g.fill();
+  g.strokeStyle = DARK; g.lineWidth = 0.9; g.stroke();
   g.rotate(ba);
-  g.fillStyle = '#111827'; rrect(g, 1, -3, 17, 6, 2); g.fill();
-  g.fillStyle = '#374151'; g.fillRect(4, -2, 8, 4);
-  g.fillStyle = p.primary; g.fillRect(14, -2.4, 5, 4.8);
-  if (eng.fireCd > 0.6 / eng.stats.blasterRate) { glow(g, 22, 0, 9, '#ffffff', 0.9); }
+  g.fillStyle = DARK; rrect(g, 0, -2, 11 + L.blaster * 1.4, 4, 1.2); g.fill();
+  g.fillStyle = STEEL_HI; g.fillRect(2, -1.2, 5 + L.blaster, 1.4);
+  g.fillStyle = p.primary; g.fillRect(9 + L.blaster * 1.4, -2, 3, 4);
+  if (L.blaster >= 3) { g.fillStyle = STEEL; g.fillRect(4, 2, 4, 1.6); g.fillRect(4, -3.6, 4, 1.6); }
+  if (eng.fireCd > 0.6 / eng.stats.blasterRate) glow(g, 14 + L.blaster * 1.4, 0, 9, '#ffffff', 0.9);
   g.restore();
 
   if (eng.shield > 0) {
     const recent = eng.shieldDelay > 3.6;
-    g.globalAlpha = recent ? 0.6 : 0.13 + 0.05 * Math.sin(t * 3);
+    g.globalAlpha = recent ? 0.6 : 0.12 + 0.05 * Math.sin(t * 3) + L.shield * 0.012;
     g.strokeStyle = '#7dd3fc'; g.lineWidth = recent ? 2.6 : 1.4;
-    g.beginPath(); g.arc(0, -1, 23, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(0, -3, 25, 0, Math.PI * 2); g.stroke();
     g.globalAlpha = 1;
   }
-  if (eng.slowT > 0) { g.strokeStyle = 'rgba(186,230,253,0.8)'; g.lineWidth = 1.5; g.beginPath(); g.arc(0, -1, 19 + Math.sin(t * 8), 0, Math.PI * 2); g.setLineDash([3, 4]); g.stroke(); g.setLineDash([]); }
-  if (eng.burnT > 0) { glow(g, 0, 0, 22, '#f97316', 0.4 + 0.2 * Math.sin(t * 20)); }
+  if (eng.slowT > 0) { g.strokeStyle = 'rgba(186,230,253,0.8)'; g.lineWidth = 1.5; g.beginPath(); g.arc(0, -3, 21 + Math.sin(t * 8), 0, Math.PI * 2); g.setLineDash([3, 4]); g.stroke(); g.setLineDash([]); }
+  if (eng.burnT > 0) glow(g, 0, -2, 24, '#f97316', 0.4 + 0.2 * Math.sin(t * 20));
+  if (hullFrac < 0.35) {
+    for (let i = 0; i < 3; i++) { const k = (t * 1.3 + i / 3) % 1; g.globalAlpha = (1 - k) * 0.5; g.fillStyle = '#374151'; g.beginPath(); g.arc(-3 + i * 3, -16 - k * 14, 2 + k * 3, 0, 7); g.fill(); }
+    g.globalAlpha = 1;
+    if (Math.sin(t * 17) > 0.8) { g.fillStyle = '#fde68a'; g.fillRect(-6 + (Math.sin(t * 30) * 8), -8, 1.6, 1.6); }
+  }
   if (eng.hurtFlash > 0) {
-    g.globalAlpha = Math.min(0.7, eng.hurtFlash * 3);
-    g.fillStyle = '#fca5a5';
-    rrect(g, -13, -10, 26, 17, 5); g.fill();
+    g.globalAlpha = Math.min(0.55, eng.hurtFlash * 2.5);
+    g.fillStyle = '#fecaca'; rrect(g, -16, -14, 32, 27, 5); g.fill();
     g.globalAlpha = 1;
   }
   g.restore();

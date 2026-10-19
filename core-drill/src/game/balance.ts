@@ -315,6 +315,7 @@ export function resolveRigStats(
     scanner: has('math'),
     lightBonus: up.lamp * 0.9,
     turretLevel: up.turret,
+    look: { drill: up.drill, hull: up.hull, blaster: up.blaster, cargo: up.cargo, lamp: up.lamp, shield: up.shield },
     augmentNames: active.map((a) => a.name),
   };
 }

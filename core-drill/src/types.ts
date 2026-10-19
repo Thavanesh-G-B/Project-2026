@@ -88,5 +88,7 @@ export interface RigStats {
   scanner: boolean;
   lightBonus: number; // extra headlamp radius in tiles
   turretLevel: number; // 0 = no pad turret
+  /** Upgrade levels (0-5) that change how the rig looks. */
+  look: { drill: number; hull: number; blaster: number; cargo: number; lamp: number; shield: number };
   augmentNames: string[];
 }
