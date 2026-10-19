@@ -316,7 +316,7 @@ function heroHeal() {
   if (h.healCd > 0) { Sfx.play('deny'); toast(`Second Wind is recharging (${Math.ceil(h.healCd)}s).`); return false; }
   if (h.mana < HERO_DEF.healMana) { Sfx.play('deny'); toast('Not enough mana.'); return false; }
   if (h.hp >= h.maxHp) { Sfx.play('deny'); toast('Your hero is already at full health.'); return false; }
-  h.mana -= HERO_DEF.healMana; h.healCd = HERO_DEF.healCd; h.castT = 0.7;
+  h.mana -= HERO_DEF.healMana; h.healCd = HERO_DEF.healCd;
   const n = Math.round(h.maxHp * HERO_DEF.healPct); h.hp = Math.min(h.maxHp, h.hp + n);
   floatText(h.i, h.j, 70, '+' + n, '#9cffb0'); sfxAt('heal', h.i, h.j);
   V.rings.push({ i: h.i, j: h.j, r: 0.2, max: 1.4, t: 0, green: true });
@@ -336,7 +336,7 @@ function updateHero(dt) {
   const h = V.hero; if (!h) return;
   h.anim += dt; h.inv = Math.max(0, h.inv - dt); h.hurt = Math.max(0, h.hurt - dt); h.strikeCd = Math.max(0, h.strikeCd - dt);
   const st = heroStats();
-  h.maxMana = st.maxMana; h.healCd = Math.max(0, (h.healCd || 0) - dt); h.castT = Math.max(0, (h.castT || 0) - dt);
+  h.maxMana = st.maxMana; h.healCd = Math.max(0, (h.healCd || 0) - dt);
   if (!h.dead) h.mana = Math.min(h.maxMana, h.mana + dt * HERO_DEF.manaRegen * (V.raid.active ? 1 : 1.8));
   if (h.dead) {
     h.respawn -= dt;

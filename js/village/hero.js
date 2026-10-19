@@ -3,8 +3,6 @@
 // cut from the reference sheet by tools/extract_hero.py). Eight walk directions come straight from the sheet;
 // the sword, axe and death poses face south-east and are mirrored for the other side.
 // Variants: 'hero', armour tiers 'a1'..'a3', and four villager outfits 'v0'..'v3'.
-// The hero and the guards (variants 'hero' and 'a1'..'a3') are drawn from the "2D HD Character Knight" sheets (assets/sprites/knight,
-// cut by tools/extract_knight.py): eight real facings per animation, tinted per armour tier. Villagers keep the old pixel-art person.
 // how much each facing's legs are re-animated (profile views already have a good stride in the sheet)
 const LEG_AMP = { S: 1, N: 1, SE: 0.9, SW: 0.9, NE: 0.9, NW: 0.9, E: 1, W: 1 };
 const Hero = {
@@ -13,83 +11,12 @@ const Hero = {
     const A = window.HERO_ATLAS;
     return Promise.all(A.variants.map(v => new Promise((res, rej) => {
       const i = new Image(); i.onload = () => { this.img[v] = i; res(); }; i.onerror = () => rej(new Error('Could not load hero_' + v + '.png')); i.src = 'assets/sprites/hero_' + v + '.png';
-    })).concat(this.loadKnight())).then(() => { this.ready = true; this.tmp = document.createElement('canvas'); this.tmp.width = this.tmp.height = 160; });
-  },
-  // ---------------------------------------------------------------- the knight (hero and guards)
-  K: { img: {}, tint: {}, SCALE: 1.0, ROW: { SE: 0, S: 1, SW: 2, W: 3, NW: 4, N: 5, NE: 6, E: 7 }, tmp: null },
-  // tier tints: multiplied over the steel-grey knight (cloth tunic -> leather, iron -> cold steel, gold, crystal)
-  KTINT: { hero: '#dcc3a0', a1: '#c4d2ea', a2: '#ffd36a', a3: '#8fe4ff' },
-  isKnight(variant) { return variant === 'hero' || variant === 'a1' || variant === 'a2' || variant === 'a3'; },
-  loadKnight() {
-    const A = window.KNIGHT_ATLAS; if (!A) return [];
-    this.K.tmp = document.createElement('canvas'); this.K.tmp.width = this.K.tmp.height = 200;
-    return Object.keys(A.sheets).map(n => new Promise((res, rej) => {
-      const i = new Image(); i.onload = () => { this.K.img[n] = i; res(); }; i.onerror = () => rej(new Error('Could not load knight sheet ' + n)); i.src = A.sheets[n].file;
-    }));
-  },
-  // a tinted copy of one sheet, made the first time that armour tier draws it
-  kSheet(name, variant) {
-    const key = variant + ':' + name, K = this.K; if (K.tint[key]) return K.tint[key];
-    const src = K.img[name], c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
-    const g = c.getContext('2d'); g.drawImage(src, 0, 0);
-    g.globalCompositeOperation = 'multiply'; g.fillStyle = this.KTINT[variant] || '#ffffff'; g.fillRect(0, 0, c.width, c.height);
-    g.globalCompositeOperation = 'destination-in'; g.drawImage(src, 0, 0);
-    return (K.tint[key] = c);
-  },
-  // eight facings from the on-screen yaw (0 = towards the camera, PI/2 = screen-right), with a little hysteresis so a heading that wobbles at a
-  // sector edge does not flicker; returns a sheet row name (S, SE, E, NE, N, NW, W, SW)
-  kDir(o) {
-    const ref = o.ref, step = Math.PI / 4, yaw = o.yaw || 0;
-    let k = ((Math.round(yaw / step) % 8) + 8) % 8;
-    if (ref && ref._kd !== undefined && ref._kd !== k) {
-      let d = yaw - ref._kd * step; while (d > Math.PI) d -= 6.2832; while (d < -Math.PI) d += 6.2832;
-      if (Math.abs(d) < step / 2 + 0.14) k = ref._kd;
-    }
-    if (ref) ref._kd = k;
-    return this.DIRS[k];
-  },
-  // which sheet and frame: the 15 frames of a sheet are spread over the action's progress (u 0..1), the walk phase (ph) or the clock (t)
-  kPick(o) {
-    const kind = o.kind || 'idle', u = Math.max(0, Math.min(1, o.u || 0)), fr = (n, x) => Math.max(0, Math.min(n - 1, Math.floor(x * n)));
-    switch (kind) {
-      case 'walk': case 'carry': { const ph = ((o.ph || 0) % 6.2832 + 6.2832) % 6.2832; return ['Run', fr(15, ph / 6.2832)]; }
-      case 'attack': return ['Melee', fr(15, u)];
-      case 'strike': return ['Special1', u < 0.4 ? fr(9, u / 0.4) : 9 + fr(6, (u - 0.4) / 0.6)];      // raise the blade, then bring it down on the impact (0.2s into 0.5s)
-      case 'chop': case 'work': return ['Pummel', fr(15, u)];
-      case 'cast': return ['CastSpell', fr(15, u)];
-      case 'hurt': return ['TakeDamage', fr(15, u)];
-      case 'dead': return ['Die', Math.min(14, Math.floor((o.deadT || 0) / 0.07))];
-      default: return ['Idle', Math.floor(((o.t || 0) * 8) % 15 + 15) % 15];
-    }
-  },
-  drawKnight(ctx, o) {
-    const A = window.KNIGHT_ATLAS, K = this.K, s = (o.s || 1) * K.SCALE, variant = o.variant || 'hero';
-    const dir = this.kDir(o), [sheet, f] = this.kPick(o), S = A.sheets[sheet], row = K.ROW[dir];
-    const img = variant === 'hero' && !this.KTINT.hero ? K.img[sheet] : this.kSheet(sheet, variant);
-    const sx = f * S.w, sy = row * S.h, dx = -(A.anchor[0] - S.ox) * s, dy = -(A.anchor[1] - S.oy) * s;
-    ctx.save();
-    ctx.translate(o.x, o.y);
-    if (o.alpha !== undefined && o.alpha < 1) ctx.globalAlpha = o.alpha;
-    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    if (o.flash) {                                           // tinted copy for hits
-      const t = K.tmp, g = t.getContext('2d'); g.clearRect(0, 0, 200, 200); g.globalCompositeOperation = 'source-over';
-      g.drawImage(img, sx, sy, S.w, S.h, 20, 20, S.w, S.h); g.globalCompositeOperation = 'source-atop'; g.fillStyle = o.flash; g.fillRect(0, 0, 200, 200);
-      ctx.drawImage(t, 20, 20, S.w, S.h, dx, dy, S.w * s, S.h * s);
-    } else ctx.drawImage(img, sx, sy, S.w, S.h, dx, dy, S.w * s, S.h * s);
-    ctx.restore();
-    o._name = `${sheet}_${dir}_${f}`; o._flip = false; o._h = (A.anchor[1] - S.oy) * s; o._dir = dir; o._sheet = sheet; o._f = f;
-    return o;
-  },
-  // CSS for the hero panel portrait: the standing knight facing the camera, cut from the Idle sheet and tinted per armour tier with a
-  // multiply-blended layer (a canvas data URL would not work: pictures loaded from file:// taint every canvas they touch)
-  portraitCss(variant) {
-    const A = window.KNIGHT_ATLAS, S = A.sheets.Idle, row = this.K.ROW.S, k = 1;
-    const w = S.w * A.cols * k, h = S.h * A.rows * k, px = (56 - S.w * k) / 2, py = (76 - S.h * k) / 2 - row * S.h * k, tint = this.KTINT[variant] || '#ffffff';
-    return `background-image:linear-gradient(${tint},${tint}),url(${S.file});background-blend-mode:multiply,normal;background-repeat:no-repeat;background-size:${w}px ${h}px;background-position:${px}px ${py}px`;
+    }))).then(() => { this.ready = true; this.tmp = document.createElement('canvas'); this.tmp.width = this.tmp.height = 160; });
   },
   count(d) { let n = 0; while (window.HERO_ATLAS.frames[`w_${d}_${n}`]) n++; return n; },
   // one frame of the sheet: sprite sheet rect and anchor
   frame(name) { return window.HERO_ATLAS.frames[name]; },
+  // direction index (0 = S) from a yaw where 0 faces the camera and PI/2 faces screen-right
   // Which of the eight pictures to show for a heading (yaw: 0 = towards the camera, 90 degrees = screen-right). The pictures are not spread
   // evenly: a heading of 63 degrees (walking along a map axis, "right and a little down") must show the side view, not the front-facing
   // three-quarter one, so the side views take everything between 52 and 128 degrees. The current picture is held a little longer (hysteresis)
@@ -110,13 +37,9 @@ const Hero = {
   },
   dirOf(yaw) { return ((Math.round(yaw / (Math.PI / 4)) % 8) + 8) % 8; },
 
-  // o: { x, y (feet), s, yaw, kind: idle|walk|carry|attack|chop|work|strike|cast|hurt|dead, u, ph, t, variant, alpha, flash, side, deadT, carry }
+  // o: { x, y (feet), s, yaw, kind: idle|walk|carry|attack|chop|work|strike|hurt|dead, u, ph, t, variant, alpha, flash, side, deadT, carry }
   draw(ctx, o) {
     if (!this.ready) return o;
-    if (window.KNIGHT_ATLAS && this.isKnight(o.variant || 'hero')) return this.drawKnight(ctx, o);
-    return this.drawLegacy(ctx, o);
-  },
-  drawLegacy(ctx, o) {
     const s = o.s || 1, variant = o.variant || 'hero', kind = o.kind || 'idle';
     let d = this.pickDir(o), name, flip = false, dx = 0, dy = 0;
     const sideOf = () => { const sx = Math.sin(o.yaw || 0); return Math.abs(sx) > 0.2 ? (sx < 0 ? -1 : 1) : (o.side || 1); };

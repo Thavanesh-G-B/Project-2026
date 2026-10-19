@@ -95,10 +95,6 @@ tools/                sprite extraction (Python) and headless tests (Node + Play
 `tools/build_assets.sh` re-slices `assets/source/*.webp` (needs `pip install pillow scipy opencv-python-headless`).
 Frame rectangles live in `tools/extract_sprites.py` and `tools/extract_world.py`; the player is cut out with GrabCut so the legs survive in every walk frame. `tools/extract_armor.py` pre-renders the armor colour layers.
 
-### The knight hero
-
-The hero and the guards are drawn from the **2D HD Character Knight** sprite pack (eight real facings per animation, tinted per armour tier; villagers keep the older pixel-art person). `tools/extract_knight.py` cuts the pack's 1920x1024 sheets (15 frames x 8 facings) down to the eight animations the game uses (Idle, Run, Melee, Pummel, Special1, TakeDamage, Die, CastSpell), removes the baked-in ground shadow and writes `assets/sprites/knight/*.png` and `atlas.js`. The pack ships no license file, so please confirm its license before distributing the game; credit: *2D HD Character Knight* (author as named on the pack's download page).
-
 ### Tests
 
 ```

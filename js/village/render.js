@@ -227,14 +227,13 @@ function drawHero(h, t) {
   }
   shadowAt(x, y, 15, 6.5, 0.3);
   if (V.selHero) unitRing(x, y, 24, '#ffe08a');
-  if (h.hurt > 0) { o.kind = 'hurt'; o.u = clamp(1 - h.hurt / 0.25, 0, 1); o.flash = 'rgba(255,50,40,.45)'; }
+  if (h.hurt > 0) { o.kind = 'hurt'; o.flash = 'rgba(255,50,40,.45)'; }
   else if (h.strikeT >= 0) { o.kind = 'strike'; o.u = clamp(h.strikeT / 0.5, 0, 1); }
   else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
   else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
   else if (moving) { o.kind = 'walk'; o.ph = sph; }
-  else if (h.castT > 0) { o.kind = 'cast'; o.u = clamp(1 - h.castT / 0.7, 0, 1); }
   Hero.draw(ctx, o); h._flip = o._flip; h._frame = o._name;
-  if (o.kind === 'attack' && !o._dir) swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
+  if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
   if (o.kind === 'strike') {                                 // charge: light gathers on the raised blade; slam: ground flash
     const side = Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -254,7 +253,7 @@ function drawGuard(gd, t) {
   else if (walking) { o.kind = 'walk'; o.ph = sph; }
   if (gd.hurt > 0) o.flash = 'rgba(255,50,40,.4)';
   Hero.draw(ctx, o);
-  if (o.kind === 'attack' && !o._dir) swordArc(x, y, o.side, o.u);
+  if (o.kind === 'attack') swordArc(x, y, o.side, o.u);
   if (gd.hp < gd.maxHp) drawBar(x, y - 70, 28, gd.hp / gd.maxHp, { ent: gd, h: 5, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
 }
 function enemyFrame(e) {
