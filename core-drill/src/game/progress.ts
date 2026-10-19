@@ -2,7 +2,7 @@
  * Pure profile reducers for Core Drill. StudyOps' App.tsx can call these inside its
  * setProfile callbacks (see INTEGRATION.md); the harness uses them directly.
  */
-import { getPlanet, normalizeDrillSave, UPGRADES, upgradeCost } from './balance';
+import { normalizeDrillSave, UPGRADES, upgradeCost } from './balance';
 import type { DrillProfile, DrillUpgradeKey, RunResult } from '../types';
 
 /** Deduct the launch cost. Never goes below zero. */
@@ -11,20 +11,28 @@ export function launchPlanet<P extends DrillProfile>(p: P, planetId: number, cos
   return { ...p, focusEnergy: Math.max(0, p.focusEnergy - cost) };
 }
 
-/** Bank a finished run: currencies, best depth and boss clears. */
+/** Record a planet's core boss as beaten the moment it happens, so a closed tab cannot lose the unlock. */
+export function markPlanetCleared<P extends DrillProfile>(p: P, planetId: number): P {
+  const drill = normalizeDrillSave(p.drill);
+  if (drill.cleared.includes(planetId)) return p;
+  return { ...p, drill: { ...drill, cleared: [...drill.cleared, planetId] } };
+}
+
+/** Bank a finished run: currencies, best depth per planet visited, and boss clears. */
 export function applyRunResult<P extends DrillProfile>(p: P, r: RunResult): P {
   const drill = normalizeDrillSave(p.drill);
-  const prev = drill.bestDepth[r.planetId] ?? 0;
-  const planet = getPlanet(r.planetId);
+  const bestDepth = { ...drill.bestDepth };
+  const depths = Object.keys(r.depths).length ? r.depths : { [r.planetId]: r.depth };
+  for (const [id, d] of Object.entries(depths)) {
+    bestDepth[Number(id)] = Math.max(bestDepth[Number(id)] ?? 0, Math.max(0, Math.floor(d)));
+  }
+  const cleared = [...drill.cleared];
+  for (const id of r.clears ?? []) if (!cleared.includes(id)) cleared.push(id);
   return {
     ...p,
     techScrap: p.techScrap + Math.max(0, r.scrap),
     neuroCores: p.neuroCores + Math.max(0, r.neuroCores),
-    drill: {
-      ...drill,
-      bestDepth: { ...drill.bestDepth, [r.planetId]: Math.min(planet.depthRows, Math.max(prev, r.depth)) },
-      cleared: r.bossBeaten && !drill.cleared.includes(r.planetId) ? [...drill.cleared, r.planetId] : drill.cleared,
-    },
+    drill: { ...drill, bestDepth, cleared },
   };
 }
 

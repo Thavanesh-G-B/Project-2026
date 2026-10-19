@@ -38,7 +38,7 @@ export interface DrillProfile {
   drill?: DrillSave;
 }
 
-export type DrillUpgradeKey = 'drill' | 'fuel' | 'hull' | 'cargo' | 'blaster' | 'shield';
+export type DrillUpgradeKey = 'drill' | 'fuel' | 'hull' | 'cargo' | 'blaster' | 'shield' | 'lamp' | 'turret';
 
 export interface DrillSave {
   upgrades: Record<DrillUpgradeKey, number>;
@@ -49,14 +49,23 @@ export interface DrillSave {
 }
 
 export interface RunResult {
+  /** Planet the run started on. */
   planetId: number;
-  outcome: 'recalled' | 'destroyed' | 'cleared';
+  outcome: 'recalled' | 'destroyed';
   scrap: number;
   neuroCores: number;
+  /** Deepest metres reached, across every planet visited in the run. */
   depth: number;
   kills: number;
+  /** True if any planet's core boss went down this run. */
   bossBeaten: boolean;
+  /** Bosses killed this run, including guardians. */
+  bossesDown: number;
   vaultsOpened: number;
+  /** Planets whose core boss was beaten this run. */
+  clears: number[];
+  /** Deepest metres per planet visited this run. */
+  depths: Record<number, number>;
 }
 
 /** Everything the engine needs to start a run, resolved from profile + augments. */
@@ -75,5 +84,7 @@ export interface RigStats {
   oreValueMult: number;
   bombs: number;
   scanner: boolean;
+  lightBonus: number; // extra headlamp radius in tiles
+  turretLevel: number; // 0 = no pad turret
   augmentNames: string[];
 }

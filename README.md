@@ -112,6 +112,6 @@ NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot p
 
 ## Core Drill: Planetfall (`core-drill.html`)
 
-A dig-down mining game with combat, built for the StudyOps study app. **Just open `core-drill.html` in a browser** (double-click, no install, works offline apart from fonts). It saves progress in your browser; use the "+ Simulate study session" button to earn Focus Energy like studying would. Source, tests and the StudyOps integration script live in [`core-drill/`](core-drill/README.md).
+An endless mining game with combat, built for the StudyOps study app. **Just open `core-drill.html` in a browser** (double-click, no install, works offline apart from fonts). Reopen the abandoned mines of five worlds: dig down level by level through timber drifts and steel plate floors, fight tunnelling worms, brutes, sentries and bosses, and see only as far as your headlamp reaches. After a planet's core boss you can warp to the next world or stay and dig deeper forever. Progress saves in your browser; "+ Simulate study session" earns Focus Energy like studying would. Source, tests and the StudyOps integration script live in [`core-drill/`](core-drill/README.md).
 
-Controls: `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse/`Space` fire, `B` bomb, `F` flashcard Override, hold `R` to recall.
+Controls: `A/D` drive, `W` thrusters, `S` dig down (hold `A/D` against rock to dig sideways), mouse/`Space` fire, `B` bomb, `F` flashcard Override, `E` trade, hold `R` to recall.

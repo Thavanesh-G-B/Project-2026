@@ -5,7 +5,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import CoreDrillGame from '../components/CoreDrillGame';
-import { applyRunResult, buyUpgrade, launchPlanet } from '../game/progress';
+import { applyRunResult, buyUpgrade, launchPlanet, markPlanetCleared } from '../game/progress';
 import type { DrillProfile, Flashcard, SubjectCombatAugment } from '../types';
 
 const params = new URLSearchParams(location.search);
@@ -57,6 +57,7 @@ function Harness() {
       flashcards={FLASHCARDS}
       onLaunch={(id, cost) => setProfile((p) => launchPlanet(p, id, cost))}
       onRunComplete={(r) => setProfile((p) => applyRunResult(p, r))}
+      onPlanetCleared={(id) => setProfile((p) => markPlanetCleared(p, id))}
       onBuyUpgrade={(key, cost) => setProfile((p) => buyUpgrade(p, key, cost))}
       onOverrideSuccess={() => console.log('override success')}
       onVaultSolved={() => console.log('vault solved')}

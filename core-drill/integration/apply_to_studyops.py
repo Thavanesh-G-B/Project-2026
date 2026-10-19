@@ -61,7 +61,7 @@ def main():
         ("import { ArmoryModal } from './components/ArmoryModal';",
          "import { ArmoryModal } from './components/ArmoryModal';\n"
          "import CoreDrillGame from './core-drill/components/CoreDrillGame';\n"
-         "import { applyRunResult, buyUpgrade, launchPlanet } from './core-drill/game/progress';\n"
+         "import { applyRunResult, buyUpgrade, launchPlanet, markPlanetCleared } from './core-drill/game/progress';\n"
          "import { getPlanet } from './core-drill/game/balance';\n"
          "import type { RunResult } from './core-drill/types';"),
         ("params.get('view') === 'game') {\n        return 'game';\n      }",
@@ -73,7 +73,7 @@ def main():
 
   const handleDrillComplete = (result: RunResult) => {
     setProfile((prev) => applyRunResult(prev, result));
-    const progress = Math.max(1, Math.round(result.depth / 10)) + (result.bossBeaten ? 5 : 0);
+    const progress = Math.max(1, Math.round(result.depth / 10)) + result.bossesDown * 5;
     setDailyMissions((prev) => {
       const { updatedMissions, newlyCompleted } = updateMissionProgress(prev, 'game', progress);
       if (newlyCompleted.length > 0) {
@@ -91,8 +91,8 @@ def main():
           id: `act_${Date.now()}`,
           memberId: 'player',
           memberName: 'Alex (You)',
-          action: result.bossBeaten
-            ? `cleared ${getPlanet(result.planetId).name} and downed ${getPlanet(result.planetId).bossName}`
+          action: result.clears.length > 0
+            ? `cleared ${result.clears.map((id) => getPlanet(id).name).join(' + ')} (${result.bossesDown} boss${result.bossesDown === 1 ? '' : 'es'} down)`
             : `drilled to ${result.depth}m on ${getPlanet(result.planetId).name}`,
           rewardDesc: `+${result.scrap} Scrap · +${result.neuroCores} Neuro-Cores`,
           timestamp: 'Just now',
@@ -116,6 +116,7 @@ def main():
             flashcards={flashcards}
             onLaunch={handleDrillLaunch}
             onRunComplete={handleDrillComplete}
+            onPlanetCleared={(id) => setProfile((prev) => markPlanetCleared(prev, id))}
             onBuyUpgrade={(key, cost) => setProfile((prev) => buyUpgrade(prev, key, cost))}
             onOverrideSuccess={handleDrillRecall}
             onVaultSolved={handleDrillRecall}

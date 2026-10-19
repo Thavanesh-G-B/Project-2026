@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cargoCount, cargoValue, getPlanet, isPlanetUnlocked, normalizeDrillSave, PLANETS, resolveRigStats,
-  TILE, UPGRADES, upgradeCost, PlanetDef,
+  cargoCount, cargoValue, coreDepth, getPlanet, isPlanetUnlocked, MERCHANT_OFFERS, nextPlanet, normalizeDrillSave,
+  PLANETS, PlanetDef, resolveRigStats, TILE, UPGRADES, upgradeCost,
 } from '../game/balance';
 import { DrillEngine, EngineEvent, Input } from '../game/engine';
 import { Camera, render } from '../game/render';
-import { isMuted, setMuted, sfx } from '../game/sfx';
+import { isMuted, music, setMuted, sfx } from '../game/sfx';
 import type { DrillProfile, DrillUpgradeKey, Flashcard, RunResult, SubjectCombatAugment } from '../types';
 import './core-drill.css';
 
@@ -17,6 +17,8 @@ export interface CoreDrillGameProps {
   onLaunch: (planetId: number, cost: number) => void;
   /** Called once when a run ends; the host banks scrap/cores and updates drill progress + missions. */
   onRunComplete: (result: RunResult) => void;
+  /** Called the moment a planet's core boss dies, so the unlock is saved even if the tab closes. */
+  onPlanetCleared?: (planetId: number) => void;
   /** Host deducts `cost` Tech Scrap and raises the upgrade level. */
   onBuyUpgrade: (key: DrillUpgradeKey, cost: number) => void;
   onOverrideSuccess?: () => void;
@@ -32,7 +34,8 @@ interface Hud {
   cargo: number; cargoCap: number; cargoValue: number; bombs: number;
   depth: number; banked: number; overrideCd: number; recall: number;
   boss: { hp: number; max: number; name: string } | null;
-  onPad: boolean; kills: number;
+  onPad: boolean; kills: number; planetId: number; surge: number;
+  nearMerchant: boolean; slow: boolean; burn: boolean;
 }
 
 interface CardModal { mode: 'vault' | 'override'; card: Flashcard; input: string; revealed: boolean }
@@ -50,24 +53,29 @@ const SUBJECT_COLORS: Record<string, string> = {
 const pct = (v: number, max: number) => `${Math.max(0, Math.min(100, (v / max) * 100))}%`;
 
 export default function CoreDrillGame(props: CoreDrillGameProps) {
-  const { profile, augments, flashcards, onLaunch, onRunComplete, onBuyUpgrade, onOverrideSuccess, onVaultSolved, onNavigateToFocus } = props;
+  const { profile, augments, onLaunch, onBuyUpgrade, onNavigateToFocus } = props;
   const [phase, setPhase] = useState<Phase>('orbit');
   const [planetId, setPlanetId] = useState(1);
   const [result, setResult] = useState<RunResult | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);
   const [banner, setBanner] = useState<{ text: string; color: string } | null>(null);
   const [modal, setModal] = useState<CardModal | null>(null);
+  const [choice, setChoice] = useState<{ planetId: number } | null>(null);
+  const [trader, setTrader] = useState(false);
+  const [traderBank, setTraderBank] = useState(0);
   const [muted, setMutedState] = useState(isMuted());
 
   const save = useMemo(() => normalizeDrillSave(profile.drill), [profile.drill]);
   const stats = useMemo(() => resolveRigStats(profile, augments), [profile, augments]);
 
   // Latest props for the game loop without restarting it.
-  const live = useRef({ profile, augments, flashcards, onRunComplete, onOverrideSuccess, onVaultSolved });
-  live.current = { profile, augments, flashcards, onRunComplete, onOverrideSuccess, onVaultSolved };
+  const live = useRef(props);
+  live.current = props;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<DrillEngine | null>(null);
+  const blocking = useRef(false); // a modal is open: freeze the simulation
+  blocking.current = !!modal || !!choice || trader;
   const modalRef = useRef<CardModal | null>(null);
   modalRef.current = modal;
   const keys = useRef(new Set<string>());
@@ -78,7 +86,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
   const showBanner = useCallback((text: string, color: string) => {
     setBanner({ text, color });
     window.clearTimeout(bannerTimer.current);
-    bannerTimer.current = window.setTimeout(() => setBanner(null), 2200);
+    bannerTimer.current = window.setTimeout(() => setBanner(null), 2400);
   }, []);
 
   const pickCard = useCallback((): Flashcard => {
@@ -91,7 +99,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     onLaunch(p.id, p.launchCost);
     setPlanetId(p.id);
     setResult(null);
-    setModal(null);
+    setModal(null); setChoice(null); setTrader(false);
     setHud(null);
     setPhase('playing');
   };
@@ -106,8 +114,10 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     if (typeof location !== 'undefined' && /[?&]debug/.test(location.search)) {
       (window as unknown as { __coreDrill?: unknown }).__coreDrill = { engine: eng };
     }
+    music.start(planetId);
     const cam: Camera = { x: eng.x, y: eng.y - 2, zoom: 1 };
     const view = { w: 800, h: 480 };
+    let baseZoom = 1;
     aimWorld.current = { x: eng.x + 3, y: eng.y };
 
     const resize = () => {
@@ -116,10 +126,10 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
       canvas.width = Math.max(2, Math.floor(r.width * dpr));
       canvas.height = Math.max(2, Math.floor(r.height * dpr));
       view.w = r.width; view.h = r.height;
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cam.zoom = Math.max(0.7, Math.min(1.35, r.height / (15 * TILE)));
+      baseZoom = Math.max(0.7, Math.min(1.35, r.height / (15 * TILE)));
     };
     resize();
+    cam.zoom = baseZoom;
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
@@ -136,19 +146,36 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
           case 'explode': sfx.explode(); break;
           case 'bomb': sfx.bomb(); break;
           case 'enemyDie': sfx.enemyDie(e.boss); break;
-          case 'dock': sfx.dock(); showBanner(`DOCKED  +${e.scrap} SCRAP${e.cores ? `  +${e.cores} CORE` : ''}`, '#34d399'); break;
+          case 'dock': sfx.dock(); showBanner(`SOLD  +${e.scrap} SCRAP${e.cores ? `  +${e.cores} CORE` : ''}`, '#34d399'); break;
+          case 'relay': sfx.relay(); showBanner('RELAY STATION — resupplied', '#38bdf8'); break;
           case 'vault': sfx.vault(); openCard('vault'); break;
           case 'emp': sfx.emp(); break;
           case 'raid': sfx.raid(); showBanner('RAID INBOUND — hostile drones from orbit', '#f87171'); break;
-          case 'boss': sfx.boss(); showBanner(`${eng.planet.bossName.toUpperCase()} AWAKENS`, eng.planet.primary); break;
-          case 'lowfuel': sfx.lowfuel(); showBanner('LOW FUEL — head back to the pad', '#fbbf24'); break;
+          case 'boss': sfx.boss(); music.setIntensity(0.85); showBanner(`${e.name.toUpperCase()} AWAKENS`, eng.planet.primary); break;
+          case 'bossDown': music.setIntensity(0); break;
+          case 'lowfuel': sfx.lowfuel(); showBanner('LOW FUEL — find a relay or head home', '#fbbf24'); break;
           case 'cargoFull': sfx.cargoFull(); break;
           case 'nest': sfx.nest(); break;
+          case 'pickup': sfx.pickup(); break;
+          case 'rumble': sfx.rumble(); break;
+          case 'tremor': sfx.tremor(); showBanner('TREMOR — rock is coming down!', '#fbbf24'); break;
+          case 'surge': sfx.surge(e.on); showBanner(e.on ? 'SIGNAL STORM — lamps failing, swarm incoming' : 'The storm passes', e.on ? '#c084fc' : '#38bdf8'); break;
+          case 'ambush': sfx.ambush(); break;
+          case 'turret': sfx.turret(); break;
+          case 'merchant': sfx.merchant(); setTraderBank(eng.bankedScrap); setTrader(true); break;
+          case 'warp': sfx.warp(); setChoice(null); showBanner(`WARP COMPLETE — ${getPlanet(e.planetId).name}`, getPlanet(e.planetId).primary); music.start(e.planetId); setPlanetId(e.planetId); break;
+          case 'planetCleared':
+            sfx.cleared();
+            live.current.onPlanetCleared?.(e.planetId);
+            if (e.canWarp) setChoice({ planetId: e.planetId });
+            else showBanner('FINAL WORLD CLEARED — keep drilling for glory', '#34d399');
+            break;
           case 'end':
-            if (e.result.outcome === 'cleared') sfx.win(); else sfx.lose();
+            if (e.result.outcome === 'destroyed') sfx.lose(); else sfx.win();
+            music.stop();
             live.current.onRunComplete(e.result);
             setResult(e.result);
-            setModal(null);
+            setModal(null); setChoice(null); setTrader(false);
             setPhase('result');
             break;
         }
@@ -160,10 +187,12 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
         if (ev.code === 'Escape' && modalRef.current.mode === 'override') setModal(null);
         return;
       }
+      if (blocking.current) return;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(ev.code)) ev.preventDefault();
       if (ev.repeat) { keys.current.add(ev.code); return; }
       keys.current.add(ev.code);
       if (ev.code === 'KeyB') eng.placeBomb();
+      if (ev.code === 'KeyE') eng.openMerchant();
       if (ev.code === 'KeyF' && eng.overrideReady) { ev.preventDefault(); openCard('override'); }
     };
     const onKeyUp = (ev: KeyboardEvent) => { keys.current.delete(ev.code); };
@@ -192,7 +221,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const k = keys.current;
-      const paused = !!modalRef.current || eng.status !== 'running';
+      const paused = blocking.current || eng.status !== 'running';
 
       if (pointer.current.active) aimWorld.current = toWorld(pointer.current.x, pointer.current.y);
       else aimWorld.current = { x: eng.x + eng.facing * 4, y: eng.y };
@@ -210,16 +239,19 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
         eng.update(dt, input);
         eng.setRecall(k.has('KeyR'), dt);
       }
+      // the engine can hold itself in a modal state (vault / choice / trader): the events open the UI
       handleEvents(eng.drainEvents());
       if (eng.status === 'ended') return;
 
-      // camera
+      // pull back and look up a little in boss caverns so the whole fight is on screen
+      const inBoss = eng.inBossRoom;
+      cam.zoom += (baseZoom * (inBoss ? 0.8 : 1) - cam.zoom) * Math.min(1, dt * 3);
       const halfW = view.w / 2 / cam.zoom / TILE, halfH = view.h / 2 / cam.zoom / TILE;
       const f = Math.min(1, dt * 8);
       cam.x += (eng.x - cam.x) * f;
-      cam.y += (eng.y - cam.y) * f;
+      cam.y += (eng.y - (inBoss ? 3.5 : 0) - cam.y) * f;
       cam.x = eng.world.w <= halfW * 2 ? eng.world.w / 2 : Math.max(halfW, Math.min(eng.world.w - halfW, cam.x));
-      cam.y = Math.max(Math.min(4, eng.world.h - halfH), Math.min(eng.world.h - halfH, cam.y));
+      cam.y = Math.max(4, Math.min(eng.world.h - halfH, cam.y));
       render(g, eng, cam, view, pointer.current.active ? aimWorld.current : null, now / 1000);
 
       if (++hudTick % 4 === 0) {
@@ -230,8 +262,9 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
           cargo: cargoCount(eng.cargo), cargoCap: eng.stats.cargoCap,
           cargoValue: cargoValue(eng.cargo, eng.planet, eng.stats.oreValueMult).scrap,
           bombs: eng.bombs, depth: eng.depth, banked: eng.bankedScrap, overrideCd: eng.overrideCd,
-          recall: eng.recallHeld, onPad: eng.onPad, kills: eng.kills,
-          boss: boss ? { hp: boss.hp, max: boss.maxHp, name: eng.planet.bossName } : null,
+          recall: eng.recallHeld, onPad: eng.onPad, kills: eng.kills, planetId: eng.planet.id, surge: eng.surgeLeft,
+          nearMerchant: eng.nearMerchant, slow: eng.slowT > 0, burn: eng.burnT > 0,
+          boss: boss && eng.inBossRoom ? { hp: boss.hp, max: boss.maxHp, name: boss.name } : null,
         });
       }
     };
@@ -240,6 +273,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      music.stop();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
@@ -251,9 +285,10 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
       pointer.current = { x: 0, y: 0, down: false, active: false };
       engineRef.current = null;
     };
-  }, [phase, planetId, pickCard, showBanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, pickCard, showBanner]);
 
-  // ------------------------------------------------------------ flashcard modal
+  // ------------------------------------------------------------ modal actions
   const answerCard = (success: boolean) => {
     const m = modalRef.current;
     const eng = engineRef.current;
@@ -269,6 +304,21 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     }
   };
 
+  const chooseWarp = (warp: boolean) => {
+    const eng = engineRef.current;
+    if (!eng) return;
+    sfx.click();
+    setChoice(null);
+    if (warp) eng.warp(); else eng.stay();
+  };
+
+  const buy = (id: string) => {
+    const eng = engineRef.current;
+    if (!eng) return;
+    if (eng.buyOffer(id)) { sfx.pickup(); setTraderBank(eng.bankedScrap); }
+  };
+  const closeTrader = () => { engineRef.current?.closeMerchant(); setTrader(false); };
+
   const touch = (code: string, down: boolean) => () => {
     if (down) keys.current.add(code); else keys.current.delete(code);
   };
@@ -281,7 +331,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
           <div>
             <div className="cd-eyebrow">STUDYOPS · BREAK-ROOM ARCADE</div>
             <h1 className="cd-title">Core Drill <span>Planetfall</span></h1>
-            <p className="cd-sub">Land on mining worlds, dig for ore, fight the glitches in the crust and the raiders from orbit. Everything you earn feeds your Armory.</p>
+            <p className="cd-sub">Reopen the abandoned mines of five dead worlds. Dig down level by level, fight what moved in, and keep going as long as your light and your nerve hold. Everything you earn feeds your Armory.</p>
           </div>
           <div className="cd-chips">
             <span className="cd-chip cd-chip-cyan">⚡ {profile.focusEnergy} EN</span>
@@ -304,15 +354,14 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
                     <div className="cd-planet-body">
                       <div className="cd-planet-top">
                         <span className="cd-code">{p.code}</span>
-                        {cleared && <span className="cd-tag cd-tag-ok">BOSS DOWN</span>}
-                        {!p.playable && <span className="cd-tag">COMING SOON</span>}
+                        {cleared && <span className="cd-tag cd-tag-ok">CORE BOSS DOWN</span>}
                         {p.playable && !unlocked && <span className="cd-tag">LOCKED · clear {getPlanet(p.requires).name}</span>}
                       </div>
                       <div className="cd-planet-name">{p.name} <small>{p.subtitle}</small></div>
                       <p className="cd-planet-blurb">{p.blurb}</p>
                       <div className="cd-planet-meta">
-                        <span>Best depth {save.bestDepth[p.id] ?? 0} m / {p.depthRows} m</span>
-                        <span>Boss: {p.bossName}</span>
+                        <span>Best depth {save.bestDepth[p.id] ?? 0} m</span>
+                        <span>Core: {p.bossName} (~{coreDepth(p)} m)</span>
                         <span>Ore ×{p.scrapMult.toFixed(1)}</span>
                       </div>
                     </div>
@@ -345,6 +394,8 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
                 <div><dt>Blaster</dt><dd>{stats.blasterDamage} dmg · {stats.blasterRate.toFixed(1)}/s</dd></div>
                 <div><dt>Crit</dt><dd>{Math.round(stats.critChance * 100)}%</dd></div>
                 <div><dt>Ore value</dt><dd>×{stats.oreValueMult.toFixed(2)}</dd></div>
+                <div><dt>Light</dt><dd>+{stats.lightBonus.toFixed(1)} tiles</dd></div>
+                <div><dt>Pad turret</dt><dd>{stats.turretLevel ? `Lv ${stats.turretLevel}` : 'none'}</dd></div>
               </dl>
               <div className="cd-augs">
                 {stats.augmentNames.length === 0
@@ -381,9 +432,9 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
               <h2 className="cd-h2">Controls</h2>
               <ul>
                 <li><b>A / D</b> drive · <b>W</b> thrusters · <b>S</b> dig down (hold toward rock to dig sideways)</li>
-                <li><b>Mouse / Space</b> fire blaster · <b>B</b> bomb · <b>F</b> flashcard Override (EMP)</li>
-                <li>Park on the pad to <b>sell, refuel and repair</b>. Hold <b>R</b> for an emergency recall (25% fee).</li>
-                <li>Cracking a <b>vault crate</b> asks a flashcard — right answer = Neuro-Core.</li>
+                <li><b>Mouse / Space</b> fire · <b>B</b> bomb · <b>F</b> flashcard Override · <b>E</b> trade</li>
+                <li>Every level has a steel <b>plate floor</b>: find the ladder shaft in the drift, or bomb through. Relays refuel you every third level.</li>
+                <li>The deeper you go, the less you can see. Hold <b>R</b> to recall (25% fee away from the pad).</li>
               </ul>
             </div>
           </section>
@@ -392,28 +443,28 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
     );
   }
 
-  const planet = getPlanet(planetId);
+  const planet = getPlanet(hud?.planetId ?? planetId);
 
   if (phase === 'result' && result) {
-    const title = result.outcome === 'cleared' ? 'PLANET CORE SECURED' : result.outcome === 'recalled' ? 'RIG RECALLED' : 'RIG DESTROYED';
-    const tone = result.outcome === 'cleared' ? 'ok' : result.outcome === 'recalled' ? 'warn' : 'bad';
+    const title = result.outcome === 'destroyed' ? 'RIG DESTROYED' : result.clears.length ? 'EXPEDITION COMPLETE' : 'RIG RECALLED';
+    const tone = result.outcome === 'destroyed' ? 'bad' : result.clears.length ? 'ok' : 'warn';
+    const start = getPlanet(result.planetId);
     return (
-      <div className="cd-root cd-result" style={{ ['--pc' as string]: planet.primary }}>
+      <div className="cd-root cd-result" style={{ ['--pc' as string]: start.primary }}>
         <div className={`cd-result-card tone-${tone}`}>
-          <div className="cd-eyebrow">{planet.code} · {planet.name}</div>
+          <div className="cd-eyebrow">{start.code} · {start.name}</div>
           <h1 className="cd-title">{title}</h1>
           <p className="cd-sub">
-            {result.outcome === 'cleared' && `${planet.bossName} is offline. The next world is within reach.`}
-            {result.outcome === 'recalled' && 'You made it out with your cargo.'}
-            {result.outcome === 'destroyed' && 'Half your unsold cargo was lost in the wreck.'}
+            {result.outcome === 'destroyed' ? 'Half your unsold cargo was lost in the wreck.' : 'You made it out with your cargo.'}
+            {result.clears.length > 0 && ` Core bosses beaten: ${result.clears.map((id) => getPlanet(id).name).join(', ')}.`}
           </p>
           <div className="cd-result-grid">
             <div><b>+{result.scrap}</b><span>Tech Scrap</span></div>
             <div><b>+{result.neuroCores}</b><span>Neuro-Cores</span></div>
             <div><b>{result.depth} m</b><span>Max depth</span></div>
             <div><b>{result.kills}</b><span>Glitches purged</span></div>
+            <div><b>{result.bossesDown}</b><span>Bosses downed</span></div>
             <div><b>{result.vaultsOpened}</b><span>Vaults decrypted</span></div>
-            <div><b>{result.bossBeaten ? '✓' : '—'}</b><span>Boss</span></div>
           </div>
           <div className="cd-result-actions">
             <button className="cd-btn cd-btn-launch" onClick={() => { sfx.click(); setPhase('orbit'); }}>Return to orbit</button>
@@ -425,6 +476,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
 
   // ---- playing
   const h = hud;
+  const warpTarget = choice ? nextPlanet(choice.planetId) : null;
   return (
     <div className="cd-root cd-play" style={{ ['--pc' as string]: planet.primary }}>
       <canvas ref={canvasRef} className="cd-canvas" />
@@ -435,9 +487,10 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
             <Bar label="SHIELD" value={h.shield} max={h.maxShield} color="#38bdf8" />
             <Bar label="FUEL" value={h.fuel} max={h.maxFuel} color={h.fuel < h.maxFuel * 0.2 ? '#fbbf24' : '#34d399'} />
             <Bar label="BLASTER" value={h.energy} max={h.maxEnergy} color="#67e8f9" />
+            {(h.slow || h.burn) && <div className="cd-status">{h.slow ? '❄ SLOWED ' : ''}{h.burn ? '🔥 BURNING' : ''}</div>}
           </div>
           <div className="cd-hud-top">
-            <div className="cd-depth">{planet.code} · DEPTH <b>{h.depth}</b> m</div>
+            <div className="cd-depth">{planet.code} · DEPTH <b>{h.depth}</b> m{h.surge > 0 && <span className="cd-surge"> · SIGNAL STORM {Math.ceil(h.surge)}s</span>}</div>
             {h.boss && (
               <div className="cd-boss">
                 <span>{h.boss.name}</span>
@@ -459,7 +512,13 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
             <button className="cd-mute" onClick={() => { setMuted(!muted); setMutedState(!muted); }} aria-label="Toggle sound">{muted ? '🔇' : '🔊'}</button>
           </div>
           {h.recall > 0 && <div className="cd-recall">RECALLING… {Math.max(0, 2.5 - h.recall).toFixed(1)}s</div>}
-          {h.onPad && <div className="cd-hint">Docked — ore sold, rig refuelled and repaired. Dig down to start a run, or hold <kbd>R</kbd> to leave.</div>}
+          {h.onPad && (
+            <div className="cd-hint">
+              Docked — ore sold, rig refuelled and repaired. Dig down to keep going, or{' '}
+              <button className="cd-inline-btn" onClick={() => engineRef.current?.finish('recalled')}>end the run and bank everything</button>.
+            </div>
+          )}
+          {!h.onPad && h.nearMerchant && <div className="cd-hint">A derelict trader hums in the dark. Press <kbd>E</kbd> to trade.</div>}
         </>
       )}
       {banner && <div className="cd-banner" style={{ color: banner.color, borderColor: banner.color }}>{banner.text}</div>}
@@ -472,6 +531,7 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
           <button onPointerDown={touch('KeyD', true)} onPointerUp={touch('KeyD', false)} onPointerLeave={touch('KeyD', false)} className="r">▶</button>
         </div>
         <div className="cd-actions">
+          <button onPointerDown={() => engineRef.current?.openMerchant()}>TRADE</button>
           <button onPointerDown={() => engineRef.current?.placeBomb()}>BOMB</button>
           <button onPointerDown={touch('Space', true)} onPointerUp={touch('Space', false)} onPointerLeave={touch('Space', false)}>FIRE</button>
         </div>
@@ -508,6 +568,47 @@ export default function CoreDrillGame(props: CoreDrillGameProps) {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {choice && (
+        <div className="cd-modal-wrap">
+          <div className="cd-modal cd-modal-wide" style={{ borderColor: planet.primary }}>
+            <div className="cd-eyebrow" style={{ color: planet.primary }}>{planet.code} · CORE SECURED</div>
+            <h2 className="cd-q">{planet.bossName} is offline.</h2>
+            <p className="cd-muted">The mine keeps going. You can stay and push deeper (guardian bosses return every few levels and the dark closes in), or warp on to the next world with your hull, cargo and bombs intact.</p>
+            <div className="cd-modal-actions cd-choice">
+              {warpTarget && (
+                <button className="cd-btn cd-btn-launch" onClick={() => chooseWarp(true)}>
+                  Warp to {warpTarget.name}
+                  <small>fuel refilled · hull +50% · cargo kept</small>
+                </button>
+              )}
+              <button className="cd-btn cd-btn-ghost" onClick={() => chooseWarp(false)}>
+                Stay on {planet.name}
+                <small>keep digging, endless depth</small>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {trader && (
+        <div className="cd-modal-wrap">
+          <div className="cd-modal cd-modal-wide">
+            <div className="cd-eyebrow" style={{ color: '#fbbf24' }}>DERELICT TRADER</div>
+            <h2 className="cd-q">"Parts. Fuel. No questions."</h2>
+            <p className="cd-muted">Pays from the scrap you have already banked this run: <b style={{ color: '#34d399' }}>{traderBank}</b></p>
+            <div className="cd-offers">
+              {MERCHANT_OFFERS.map((o) => (
+                <button key={o.id} className="cd-offer" disabled={traderBank < o.cost} onClick={() => buy(o.id)}>
+                  <span><b>{o.label}</b><small>{o.detail}</small></span>
+                  <em>{o.cost}</em>
+                </button>
+              ))}
+            </div>
+            <div className="cd-modal-actions"><button className="cd-btn cd-btn-ghost" onClick={closeTrader}>Leave</button></div>
           </div>
         </div>
       )}

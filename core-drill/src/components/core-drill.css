@@ -124,3 +124,21 @@
 .cd-result-grid div { background: #070b16; border: 1px solid var(--cd-line); border-radius: 12px; padding: 12px 6px; }
 .cd-result-grid b { display: block; font-family: 'Chakra Petch', sans-serif; font-size: 22px; color: var(--cd-green); } .cd-result-grid span { font-size: 11px; color: var(--cd-dim); }
 @media (max-width: 480px) { .cd-result-grid { grid-template-columns: repeat(2, 1fr); } .cd-hud-left { width: 150px; } }
+
+/* ---------- v2 additions ---------- */
+.cd-status { font-family: 'Chakra Petch', sans-serif; font-size: 11px; color: #fbbf24; text-shadow: 0 0 6px #000; }
+.cd-surge { color: #c084fc; }
+.cd-inline-btn { background: none; border: 0; padding: 0; color: var(--cd-cyan); text-decoration: underline; cursor: pointer; font: inherit; pointer-events: auto; }
+.cd-hint { pointer-events: auto; }
+.cd-modal-wide { width: min(600px, 100%); }
+.cd-choice { flex-direction: column; margin-top: 14px; }
+.cd-choice .cd-btn { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 16px; font-size: 15px; width: 100%; }
+.cd-choice .cd-btn small { font-weight: 400; font-size: 11px; opacity: 0.8; }
+.cd-offers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+@media (max-width: 520px) { .cd-offers { grid-template-columns: 1fr; } }
+.cd-offer { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; background: #070b16; color: var(--cd-text); border: 1px solid var(--cd-line); border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: inherit; }
+.cd-offer b { display: block; font-size: 13px; }
+.cd-offer small { color: var(--cd-dim); font-size: 11px; }
+.cd-offer em { font-style: normal; font-family: 'Chakra Petch', sans-serif; color: var(--cd-green); border: 1px solid rgba(52, 211, 153, 0.5); border-radius: 8px; padding: 4px 8px; }
+.cd-offer:hover:not(:disabled) { border-color: #fbbf24; }
+.cd-offer:disabled { opacity: 0.4; cursor: not-allowed; }
