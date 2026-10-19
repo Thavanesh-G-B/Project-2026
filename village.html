@@ -46,6 +46,19 @@
   .hbar.xp i.fill { background: linear-gradient(#e8d0ff,#a068e0 55%,#5a2e9a); } .hbar.raid i.fill { background: linear-gradient(#ff9a80,#d8402c 55%,#7a1810); }
   .hbar.low i.fill { background: linear-gradient(#ff9a80,#d8402c 55%,#7a1810); animation: pulseBar .7s ease-in-out infinite alternate; } @keyframes pulseBar { to { filter: brightness(1.45); } }
   .chip.hud.danger { background: linear-gradient(#5e231c,#401610); }
+  .chip.hud { min-width: 232px; } .hudabil button, .hportrait, .hudstats { pointer-events: auto; }      /* the rest of the panel lets clicks through to the map */
+  .hudhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .hportrait { width: 38px; height: 50px; flex: none; background-color: #22404a; background-repeat: no-repeat; border: 1px solid var(--line); cursor: pointer; box-shadow: inset 0 0 10px rgba(0,0,0,.45); }
+  .hudid { display: flex; flex-direction: column; min-width: 0; flex: 1; } .hudid b { font: 600 14px var(--serif); line-height: 1.1; } .hudid small { font: 10px var(--mono); color: var(--gold); letter-spacing: .5px; text-transform: uppercase; margin-top: 2px; }
+  .badge { font: 10px var(--mono); letter-spacing: .5px; text-transform: uppercase; padding: 3px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--mute); white-space: nowrap; } .badge.hot { color: #ffd8cf; border-color: #c4604f; background: rgba(120,40,30,.6); animation: pulseBar .7s ease-in-out infinite alternate; }
+  .hudabil { display: flex; gap: 6px; margin-top: 8px; }
+  .hudabil button { position: relative; flex: 1; height: 38px; padding: 0; background: #1d363c; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; color: var(--ink); }
+  .hudabil button b { font: 16px var(--mono); display: block; line-height: 1; margin-top: 4px; } .hudabil button kbd { position: absolute; left: 3px; bottom: 1px; font: 8px var(--mono); opacity: .7; }
+  .hudabil button::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--cd, 0%); background: rgba(0,0,0,.55); }
+  .hudabil button em { position: absolute; right: 3px; bottom: 1px; z-index: 2; font: 700 10px var(--mono); font-style: normal; color: #ffe08a; }
+  .hudabil button.nomana { opacity: .6; filter: saturate(.4); } .hudabil button.locked { opacity: .4; filter: grayscale(1); } .hudabil button.active { border-color: #ffd070; box-shadow: 0 0 10px rgba(255,200,90,.8); }
+  .hudstats { display: flex; gap: 12px; margin-top: 8px; font: 12px var(--mono); color: var(--mute); cursor: pointer; } .hudstats b { color: var(--ink); font-weight: 500; } .hudstats .sp.on { color: #e8d0ff; animation: pulseBar .8s ease-in-out infinite alternate; }
+  .hudinc { display: flex; gap: 10px; margin-top: 6px; font: 10px var(--mono); color: var(--mute); } .hudinc b { color: var(--gold); font-weight: 500; } .hudinc .dif { margin-left: auto; text-transform: uppercase; letter-spacing: .5px; }
   #chipState { left: 14px; top: 14px; } #chipHp { right: 14px; top: 14px; }
   #mapInfo { left: 14px; bottom: 14px; font: 12px var(--mono); color: var(--mute); }
   .zoom { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 8px; }
@@ -59,8 +72,8 @@
   #tStrike::after { content: ""; position: absolute; left: 0; bottom: 0; height: 100%; width: var(--cd, 0%); background: rgba(0,0,0,.35); }
   .toolbar button span { position: relative; z-index: 1; }
   /* hero / enemy panel */
-  .info { height: 190px; }
-  .hp { display: grid; grid-template-columns: 250px minmax(0, 1fr) 300px; gap: 4px 22px; align-items: start; }
+  .info { height: 210px; }
+  .hp { display: grid; grid-template-columns: 250px minmax(0, 1fr) 430px; gap: 4px 22px; align-items: start; }
   .hp-id { display: flex; gap: 12px; align-items: center; } .portrait { width: 56px; height: 76px; flex: none; border-radius: 10px; background-color: #22404a; background-repeat: no-repeat; border: 1px solid var(--line); box-shadow: inset 0 0 12px rgba(0,0,0,.4); }
   .hname { font: 600 18px var(--serif); line-height: 1.15; } .hname small { display: block; font: 11px var(--mono); color: var(--gold); letter-spacing: 1px; text-transform: uppercase; margin-top: 3px; }
   .hstate { font: 12px var(--mono); color: var(--mute); margin-top: 4px; }
@@ -68,7 +81,7 @@
   .hbars .hbar { height: 10px; } .hbar.mana i.fill { background: linear-gradient(#d6c8ff,#7a62e0 55%,#3a2a9a); }
   .hmid { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .hstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px 16px; font: 12px var(--mono); } .hstats div { display: flex; flex-direction: column; } .hstats span { color: var(--mute); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; } .hstats b { color: var(--ink); font-weight: 500; }
-  .hacts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; } .hacts .btn { padding: 5px 8px; font-size: 12px; text-align: left; display: flex; flex-direction: column; line-height: 1.25; } .hacts .btn kbd { font: 10px var(--mono); opacity: .65; margin-left: 4px; } .hacts .btn.off { opacity: .45; } .hacts .btn .cost { margin-top: 2px; align-self: flex-start; font-size: 10px; padding: 1px 6px; }
+  .hacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } .hacts .btn { padding: 5px 8px; font-size: 12px; text-align: left; display: flex; flex-direction: column; line-height: 1.25; } .hacts .btn kbd { font: 10px var(--mono); opacity: .65; margin-left: 4px; } .hacts .btn.off { opacity: .45; } .hacts .btn .cost { margin-top: 2px; align-self: flex-start; font-size: 10px; padding: 1px 6px; }
   .htargets { display: flex; flex-wrap: wrap; gap: 6px; font: 11px var(--mono); } .htargets .tg { display: flex; align-items: center; gap: 6px; background: #1b333a; border: 1px solid var(--line); border-radius: 8px; padding: 2px 3px 2px 8px; } .htargets .tg .hbar { width: 40px; height: 7px; } .htargets .tg button { padding: 1px 8px; font-size: 11px; border-radius: 6px; background: #5a2a24; border: 1px solid #a4503f; color: #ffd8cf; } .htargets .tg.on { border-color: #e0705a; }
   .btn.red { background: #6a2a24; border-color: #b4604f; color: #ffe2d8; }
   .info { padding: 12px 18px; border-top: 1px solid var(--line); height: 132px; overflow: auto; background: var(--panel); color: #d4e0da; }
@@ -93,6 +106,16 @@
   #qbar canvas { width: 100%; height: 100%; display: block; border-radius: 7px; } #qbar small { position: absolute; bottom: 1px; left: 0; right: 0; text-align: center; font: 9px var(--mono); color: #e6c677; text-shadow: 0 1px 2px #000; }
   #qbar .tip { display: none; position: absolute; bottom: 58px; left: 0; background: #0f1d23; border: 1px solid var(--gold-d); border-radius: 6px; padding: 5px 8px; font: 11px var(--mono); white-space: nowrap; z-index: 5; }
   #qbar button:hover .tip { display: block; }
+  .tabs { display: flex; gap: 8px; margin: -4px 0 12px; flex-wrap: wrap; } .tabs button { background: #1d363c; border: 1px solid var(--line); border-radius: 8px; padding: 6px 14px; font: 12px var(--mono); letter-spacing: 1px; text-transform: uppercase; } .tabs button.on { background: #c7a65f; color: #1d1a10; border-color: #e6c677; }
+  #resGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+  .tech { display: flex; gap: 10px; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; } .tech.done { opacity: .7; }
+  .tech .ti { width: 38px; height: 38px; flex: none; display: grid; place-items: center; font: 20px var(--mono); color: var(--gold); background: #0f2127; border: 1px solid var(--line); }
+  .tech .tb { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; } .tech .tb small { color: var(--mute); font-size: 11px; line-height: 1.3; }
+  .pips { display: inline-flex; gap: 3px; } .pips i { width: 12px; height: 6px; background: #0c1519; border: 1px solid #34525a; } .pips i.on { background: var(--gold); border-color: #8a6c2c; }
+  .resnote.wide { display: block; line-height: 1.7; } .resnote { grid-column: 1 / -1; display: flex; gap: 14px; align-items: center; padding: 10px 14px; border: 1px dashed var(--gold-d); border-radius: 10px; color: var(--ink); font-size: 13px; } .resnote kbd { font: 10px var(--mono); background: #0f2127; padding: 1px 5px; border: 1px solid var(--line); }
+  .orow { display: flex; align-items: center; gap: 18px; justify-content: space-between; padding: 12px 4px; border-bottom: 1px solid rgba(86,124,124,.3); } .orow small { display: block; color: var(--mute); font-size: 12px; max-width: 520px; margin-top: 2px; }
+  .seg { display: flex; gap: 4px; flex: none; } .seg button { background: #1d363c; border: 1px solid var(--line); padding: 6px 12px; font: 12px var(--mono); } .seg button.on { background: #c7a65f; color: #1d1a10; border-color: #e6c677; }
+  .toolbar button.glow { animation: pulseBar .8s ease-in-out infinite alternate; } .toolbar kbd { font: 9px var(--mono); opacity: .6; margin-left: 4px; }
   #shopGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
   .card-b { display: flex; gap: 10px; text-align: left; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   .card-b:hover { border-color: var(--gold); } .card-b.full { opacity: .45; } .card-b.poor .row .cost { opacity: .9; }
@@ -133,11 +156,23 @@
       <canvas id="v"></canvas>
       <div class="chip" id="chipState">Peaceful preparation</div>
       <div class="chip hud" id="chipHp">
+        <div class="hudhead">
+          <div class="hportrait" id="hudPortrait" title="Select your hero"></div>
+          <div class="hudid"><b id="hudName">Aldric</b><small id="hudTitle"></small></div>
+          <span class="badge" id="hudBadge"></span>
+        </div>
         <div class="row"><span class="lab">Hall</span><span class="hbar hall" id="barHall"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHall">0</span></div>
         <div class="row"><span class="lab">Hero</span><span class="hbar hero" id="barHero"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numHero">0</span></div>
         <div class="row"><span class="lab">Mana</span><span class="hbar mana" id="barMana"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numMana">0</span></div>
         <div class="row"><span class="lab">XP</span><span class="hbar xp" id="barXp"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numXp">Lv 1</span></div>
         <div class="row" id="rowRaid" style="display:none"><span class="lab">Raid</span><span class="hbar raid" id="barRaid"><i class="trail"></i><i class="fill"></i></span><span class="num" id="numRaid">0</span></div>
+        <div class="hudabil">
+          <button id="hStrike" title="Hero strike (Space)"><b>⚡</b><kbd>Spc</kbd><em></em></button>
+          <button id="hHeal" title="Second Wind (H)"><b>✚</b><kbd>H</kbd><em></em></button>
+          <button id="hCry" title="Battle Cry (B)"><b>⚑</b><kbd>B</kbd><em></em></button>
+        </div>
+        <div class="hudstats" id="hudStats"></div>
+        <div class="hudinc" id="hudInc"></div>
       </div>
       <div class="chip" id="mapInfo"></div>
       <div id="qbar" title="Quick build"></div>
@@ -150,9 +185,11 @@
       <button id="tGather"><span>⌾ Gather tree</span></button>
       <button id="tShop" class="pri"><span>◉ Village shop</span></button>
       <button id="tExpand"><span>☁ Expand map</span></button>
+      <button id="tResearch"><span>✦ Research <kbd>T</kbd></span></button>
       <button id="tHero"><span>Hero</span></button>
       <button id="tStrike"><span>Hero strike</span></button>
       <button id="tRaid" class="pri">Start raid 1</button>
+      <button id="tOptions"><span>⚙ Options</span></button>
     </div>
     <div class="info" id="info"></div>
   </section>
@@ -163,6 +200,15 @@
   <div class="hd"><h2>Village shop</h2><span class="sub" id="shopRes"></span><button class="tiny" id="shopClose">Close</button></div>
   <div id="shopTabs"></div>
   <div id="shopGrid"></div>
+</div></div>
+<div class="modal" id="research"><div class="sheet">
+  <div class="hd"><h2>Research</h2><span class="sub" id="resRes"></span><button class="tiny" id="resClose">Close</button></div>
+  <div id="resTabs" class="tabs"></div>
+  <div id="resGrid"></div>
+</div></div>
+<div class="modal" id="options"><div class="sheet">
+  <div class="hd"><h2>Options</h2><span class="sub">Saved on this device</span><button class="tiny" id="optClose">Close</button></div>
+  <div id="optBody"></div>
 </div></div>
 <div class="modal" id="worldmap"><div class="sheet">
   <div class="hd"><h2>World map</h2><span class="sub">Click to jump the camera</span><button class="tiny" id="mapClose">Close</button></div>
@@ -192,6 +238,7 @@
 <script src="js/village/foes.js"></script>
 <script src="js/village/life.js"></script>
 <script src="js/village/render.js"></script>
+<script src="js/village/ui2.js"></script>
 <script src="js/village/ui.js"></script>
 </body>
 </html>

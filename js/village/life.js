@@ -70,7 +70,7 @@ const Life = {
     for (let i = 2; i < GN - 2; i++) for (let j = 2; j < GN - 2; j++) {
       if (Math.hypot(i - cx, j - cy) < 5.5 || occAt(i, j) !== 0 || isRoad(i, j)) continue;
       const h = vhash(i, j, seed + 81), forest = smoothstep(7, 18, Math.max(Math.abs(i - MID), Math.abs(j - MID)));
-      const type = h < 0.01 + forest * 0.012 ? 'boulder' : h < 0.026 + forest * 0.02 ? 'berry' : h < 0.034 + forest * 0.014 ? 'stump' : null;
+      const type = h < 0.006 + forest * 0.008 ? 'boulder' : h < 0.02 + forest * 0.014 ? 'berry' : h < 0.026 + forest * 0.012 ? 'stump' : null;
       if (type && !taken.has(i + ',' + j)) place(type, i, j, { wild: true });
     }
     this.props = list.sort((a, b) => (a.i + a.j) - (b.i + b.j));

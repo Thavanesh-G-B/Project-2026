@@ -154,9 +154,10 @@ function selectHero() { V.selected = null; V.selEnemy = null; V.selHero = true; 
 function selectEnemy(e) { V.selected = null; V.selHero = false; V.selEnemy = e; refreshInfo(); }
 let infoHtml = '';
 const barH = (cls, f, trail) => `<span class="hbar ${cls}${f < 0.3 && f > 0 && cls === 'hero' ? ' low' : ''}"><i class="fill" style="transform:scaleX(${clamp(f, 0, 1).toFixed(3)});transition:none"></i></span>`;
-function portraitStyle() {
-  const A = window.HERO_ATLAS, t = heroTierNow(), F = A.frames.w_S_0, k = 1.15, w = F[2] * k, h2 = F[3] * k;
-  return `background-image:url(assets/sprites/hero_${t ? 'a' + t : 'hero'}.png);background-size:${A.w * k}px ${A.h * k}px;background-position:${-F[0] * k + (62 - w) / 2}px ${-F[1] * k + (84 - h2) / 2 - 2}px`;
+function portraitStyle(k, bw, bh, top) {
+  k = k || 1.15; bw = bw || 62; bh = bh || 84;
+  const A = window.HERO_ATLAS, t = heroTierNow(), F = A.frames.w_S_0, w = F[2] * k, h2 = F[3] * k;
+  return `background-image:url(assets/sprites/hero_${t ? 'a' + t : 'hero'}.png);background-size:${A.w * k}px ${A.h * k}px;background-position:${-F[0] * k + (bw - w) / 2}px ${top ? -F[1] * k + 1 : -F[1] * k + (bh - h2) / 2 - 2}px`;
 }
 function heroState(h) {
   if (h.dead) return `Fallen. Returns in ${Math.ceil(h.respawn)}s`;
@@ -174,6 +175,7 @@ function heroPanel() {
   const need = 24 * V.heroLevel, ok = !h.dead;
   const strikeWhy = !ok ? 'down' : h.strikeCd > 0 ? Math.ceil(h.strikeCd) + 's' : h.mana < HERO_DEF.strikeMana ? 'no mana' : '';
   const healWhy = !ok ? 'down' : h.healCd > 0 ? Math.ceil(h.healCd) + 's' : h.mana < HERO_DEF.healMana ? 'no mana' : h.hp >= h.maxHp ? 'full hp' : '';
+  const cryWhy = !ok ? 'down' : V.heroLevel < HERO_DEF.cryLevel ? 'level ' + HERO_DEF.cryLevel : h.cryCd > 0 ? Math.ceil(h.cryCd) + 's' : h.mana < HERO_DEF.cryMana ? 'no mana' : '';
   const tgt = h.order && h.order.type === 'attack' && h.order.e && !h.order.e.dying ? h.order.e : null;
   const foes = V.enemies.filter(e => !e.dying && Terr.has(e.i, e.j)).sort((a, b) => Math.hypot(a.i - h.i, a.j - h.j) - Math.hypot(b.i - h.i, b.j - h.j)).slice(0, 6);
   return `<div class="hp">
@@ -184,7 +186,7 @@ function heroPanel() {
     <div class="hmid">
       <div class="hstats">
         <div><span>Damage per hit</span><b>${st.dmg}</b></div><div><span>Attack speed</span><b>${(1 / HERO_DEF.cd).toFixed(1)} hits/s · ${dps.toFixed(0)} dps</b></div><div><span>Reach</span><b>${HERO_DEF.range} tiles</b></div>
-        <div><span>Strike</span><b>${Math.round(st.dmg * HERO_DEF.strikeDmg)} dmg · radius ${HERO_DEF.strikeRadius}</b></div><div><span>Armor</span><b>${HERO_DEF.armorName[t]}${st.red ? ' (-' + Math.round(st.red * 100) + '% dmg)' : ''}</b></div><div><span>Speed · mana regen</span><b>${HERO_DEF.speed} · ${(HERO_DEF.manaRegen * (V.raid.active ? 1 : 1.8)).toFixed(1)}/s</b></div>
+        <div><span>Strike</span><b>${Math.round(st.dmg * HERO_DEF.strikeDmg)} dmg · radius ${HERO_DEF.strikeRadius}</b></div><div><span>Armor</span><b>${HERO_DEF.armorName[t]}${st.red ? ' (-' + Math.round(st.red * 100) + '% dmg)' : ''}</b></div><div><span>Speed · mana regen</span><b>${st.speed.toFixed(2)} · ${(st.regen * (V.raid.active ? 1 : 1.8)).toFixed(1)}/s</b></div>
         <div><span>Hero kills</span><b>${h.hero_kills}</b></div><div><span>Village kills</span><b>${V.kills}</b></div><div><span>Raids survived</span><b>${V.raid.n - 1}</b></div>
       </div>
       <div class="htargets">${foes.length ? '<span style="color:var(--mute);align-self:center">Attack:</span>' + foes.map(e => `<div class="tg${tgt === e ? ' on' : ''}"><span>${e.d.name}</span>${barH('raid', e.hp / e.maxHp)}<button data-act="atk" data-id="${eid(e)}">${tgt === e ? 'Targeted' : 'Attack'}</button></div>`).join('') : '<span style="color:var(--mute)">No enemies in the village. During a raid, pick a specific one here, or click an enemy on the map.</span>'}</div>
@@ -192,6 +194,8 @@ function heroPanel() {
     <div class="hacts">
       <button class="btn gold${strikeWhy ? ' off' : ''}" data-act="strike"><span>Hero strike <kbd>Space</kbd></span><span class="cost">${HERO_DEF.strikeMana} MP${strikeWhy ? ' · ' + strikeWhy : ''}</span></button>
       <button class="btn${healWhy ? ' off' : ''}" data-act="heal"><span>Second Wind <kbd>H</kbd></span><span class="cost">${HERO_DEF.healMana} MP · +${Math.round(HERO_DEF.healPct * 100)}% HP${healWhy ? ' · ' + healWhy : ''}</span></button>
+      <button class="btn${cryWhy ? ' off' : ''}" data-act="cry"><span>Battle Cry <kbd>B</kbd></span><span class="cost">${HERO_DEF.cryMana} MP · +${Math.round((HERO_DEF.cryDmg - 1) * 100)}% dmg${cryWhy ? ' · ' + cryWhy : ''}</span></button>
+      <button class="btn${skillPoints() ? ' gold' : ''}" data-act="train"><span>Train hero</span><span class="cost">${skillPoints()} skill point${skillPoints() === 1 ? '' : 's'}</span></button>
       <button class="btn" data-act="nearest"><span>Attack nearest <kbd>J</kbd></span></button>
       <button class="btn" data-act="stop"><span>Stop <kbd>X</kbd></span></button>
       <button class="btn" data-act="home"><span>Return to hall</span></button>
@@ -220,6 +224,10 @@ function infoAction(act, id) {
   switch (act) {
     case 'strike': if (!heroStrike()) { } break;
     case 'heal': heroHeal(); break;
+    case 'cry': heroCry(); break;
+    case 'train': openResearch('hero'); break;
+    case 'trade': { const [k, m] = id.split(':'); const w = trade(k, +m); if (w) toast2(w); refreshInfo(); break; }
+    case 'research': openResearch('village'); break;
     case 'nearest': { const e = nearestEnemy(h.i, h.j, 99); if (e) orderAttack(e); else toast2('No enemies to attack.'); break; }
     case 'stop': heroStop(); break;
     case 'home': heroHome(); break;
@@ -234,12 +242,14 @@ function infoAction(act, id) {
 function statLines(b) {
   const d = BDEF[b.type], L = b.level - 1, out = [];
   if (d.kind === 'collector') out.push(`Produces ${d.rate[L]}/s ${d.res}`, `Holds ${d.store[L]} (now ${Math.floor(b.prod)})`);
-  if (d.kind === 'defense') out.push(`Damage ${d.dmg[L]} per shot`, `Range ${d.range} tiles`, d.ground && !d.air ? 'Ground only' : 'Ground and air', d.splash ? 'Splash damage' : '');
+  if (d.kind === 'defense') out.push(`Damage ${Math.round(d.dmg[L] * towerMul(b.type))} per shot`, `Range ${d.range} tiles`, d.ground && !d.air ? 'Ground only' : 'Ground and air', d.splash ? 'Splash damage' : '');
   if (d.kind === 'storage') out.push(`Adds ${d.cap[L]} gold and wood capacity`);
   if (d.kind === 'core') out.push(`Base storage ${d.cap[L]} each`, `Builders ${builderCount()}`);
   if (d.kind === 'trap') out.push(`Damage ${d.dmg[L]}`, b.armed ? 'Armed' : 'Sprung (re-arms after the raid)');
   if (d.kind === 'shrine') out.push(`Heals units ${d.heal[L]}/s`, `Mends buildings ${d.mend[L]}/s`, `Radius ${d.radius} tiles`);
   if (d.kind === 'hut') out.push('+1 builder');
+  if (d.chain) out.push(`Chains to ${d.chain[L]} enemies`);
+  if (d.kind === 'academy') out.push(`${TECH_ORDER.reduce((a, k) => a + tech(k), 0)} techs researched`);
   if (d.minRange) out.push(`Cannot hit within ${d.minRange} tiles`);
   if (d.kind === 'barracks') out.push(`Trains ${d.guards[L]} guards (HP ${d.ghp[L]}, damage ${d.gdmg[L]})`);
   return out.filter(Boolean);
@@ -268,7 +278,9 @@ function refreshInfo() {
       const why = upgradeCheck(b), c = d.cost[b.level];
       h += `<button class="btn ${why ? '' : 'gold'}" id="aUpgrade" title="${why || ''}">Upgrade to ${b.level + 1}</button><span class="costs">${costHtml(c)} <span class="cost">${d.time[b.level]}s</span></span>`;
     } else if (!d.maxLevel) h += '<span class="costs">Max level</span>';
+    if (d.kind === 'academy') h += `<button class="btn gold" data-act="research">Open research</button>`;
     h += '</div>';
+    if (d.kind === 'market') h += marketPanel();
   }
   el.innerHTML = h;
   const bind = (id, fn) => { const x = $(id); if (x) x.onclick = fn; };
@@ -292,7 +304,7 @@ function refreshHud() {
   $('rGold').textContent = `${Math.floor(V.res.gold)} / ${c.gold}`; $('rWood').textContent = `${Math.floor(V.res.wood)} / ${c.wood}`;
   $('rBuild').textContent = `${builderCount() - busyBuilders()}/${builderCount()}`;
   const hall = V.buildings.find(b => b.type === 'townhall');
-  const setBar = (id, f, num, txt) => { const el = $(id); const k = clamp(f, 0, 1); el.querySelector('.fill').style.transform = `scaleX(${k})`; el.querySelector('.trail').style.transform = `scaleX(${k})`; el.classList.toggle('low', k < 0.3 && k > 0); if (num) $(num).textContent = txt; };
+  const setBar = (id, f, num, txt) => { const el = $(id); const k = clamp(f, 0, 1); el.querySelector('.fill').style.transform = `scaleX(${k})`; el.querySelector('.trail').style.transform = `scaleX(${k})`; el.classList.toggle('low', k < 0.3 && k > 0 && (id === 'barHall' || id === 'barHero')); if (num) $(num).textContent = txt; };
   setBar('barHall', hall ? hall.hp / hall.maxHp : 0, 'numHall', hall ? Math.ceil(hall.hp) : 0);
   setBar('barMana', V.hero ? V.hero.mana / V.hero.maxMana : 0, 'numMana', V.hero ? Math.floor(V.hero.mana) : 0);
   const hr = V.hero; setBar('barHero', hr && !hr.dead ? hr.hp / hr.maxHp : 0, 'numHero', hr ? (hr.dead ? Math.ceil(hr.respawn) + 's' : Math.ceil(hr.hp)) : 0);
@@ -300,12 +312,14 @@ function refreshHud() {
   const rr = V.raid, left = rr.active ? rr.queue.length + V.enemies.filter(e => !e.dying).length : 0;
   $('rowRaid').style.display = rr.active ? 'flex' : 'none'; $('chipHp').classList.toggle('danger', rr.active);
   if (rr.active) setBar('barRaid', rr.total ? left / rr.total : 0, 'numRaid', left);
+  refreshHud2();
+  { const rb = $('tResearch'); rb.classList.toggle('glow', skillPoints() > 0); }
   const sb = $('tStrike'), cd = V.hero ? V.hero.strikeCd : 0;
   sb.style.setProperty('--cd', cd > 0 ? (cd / HERO_DEF.strikeCd * 100) + '%' : '0%'); sb.classList.toggle('cooling', cd > 0);
   sb.querySelector('span').textContent = cd > 0 ? `Hero strike (${Math.ceil(cd)}s)` : `Hero strike · ${HERO_DEF.strikeMana} MP`;
   $('pLevel').textContent = `Hero level ${V.heroLevel} · ${V.heroXp}/${24 * V.heroLevel} XP`;
   $('pXp').style.width = (V.heroXp / (24 * V.heroLevel) * 100) + '%';
-  $('mapInfo').textContent = `Territory ${Terr.r * 2 + 1} × ${Terr.r * 2 + 1} of ${GN} × ${GN}${Terr.level >= TERR_R.length ? ' · fully open' : ''}`;
+  $('mapInfo').textContent = `Territory ${Math.min(GN, Terr.r * 2 + 1)} × ${Math.min(GN, Terr.r * 2 + 1)} of ${GN} × ${GN}${Terr.level >= TERR_R.length ? ' · fully open' : ` · stage ${Terr.level}/${TERR_R.length}`}${SET.speed > 1 ? ` · ${SET.speed}× speed` : ''}`;
   $('lost').classList.toggle('show', V.state === 'lost');
   if (V.state === 'lost') $('lostStats').textContent = `You repelled ${V.raid.n - 1} raid${V.raid.n === 2 ? '' : 's'}, slew ${V.kills} undead and your hero reached level ${V.heroLevel}.`;
 }
@@ -398,7 +412,7 @@ function closeMap() { $('worldmap').classList.remove('show'); UI.mapOpen = false
 
 // ---------------------------------------------------------------- wiring
 function setZoom(z, ax, ay) {
-  const old = UI.cam.zoom; z = clamp(z, 0.45, 1.7);
+  const old = UI.cam.zoom; z = clamp(z, Terr.r > 25 ? 0.3 : Terr.r > 18 ? 0.38 : 0.45, 1.7);   // a bigger territory can be viewed from further away
   if (ax !== undefined) { const wx = worldX(ax), wy = worldY(ay); UI.cam.zoom = z; UI.cam.x = wx - (ax - UI.W / 2) / z; UI.cam.y = wy - (ay - UI.H / 2) / z; }
   else UI.cam.zoom = z;
   clampCam();
@@ -412,6 +426,10 @@ function wire() {
   $('tMove').onclick = () => setTool('move'); $('tGather').onclick = () => setTool('gather');
   $('tShop').onclick = () => { setTool('move'); openShop(); };
   $('tStrike').onclick = () => heroStrike();
+  $('tResearch').onclick = () => { setTool('move'); openResearch(); }; $('tOptions').onclick = openOptions;
+  $('resClose').onclick = closeResearch; $('research').onclick = e => { if (e.target === $('research')) closeResearch(); };
+  $('optClose').onclick = closeOptions; $('options').onclick = e => { if (e.target === $('options')) closeOptions(); };
+  for (const [id, fn] of [['hStrike', () => heroStrike()], ['hHeal', () => heroHeal()], ['hCry', () => heroCry()], ['hudPortrait', () => { if (V.hero) { selectHero(); centerOn(V.hero.i, V.hero.j); } }], ['hudStats', () => openResearch('hero')]]) $(id).addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); fn(); });
   $('tHero').onclick = () => { if (V.hero) { selectHero(); const hh = V.hero; centerOn(hh.i, hh.j); } };
   // act on mouse-down (the panel redraws as numbers change, which could swallow a click); keyboard activation still uses click
   $('info').addEventListener('mousedown', e => { const a = e.target.closest('[data-act]'); if (a && e.button === 0) { e.preventDefault(); infoAction(a.dataset.act, a.dataset.id); } });
@@ -443,16 +461,16 @@ function wire() {
   window.addEventListener('keydown', e => {
     Sfx.init();
     if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && !$('shop').classList.contains('show') && !UI.mapOpen) {
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && !$('shop').classList.contains('show') && !$('research').classList.contains('show') && !$('options').classList.contains('show') && !UI.mapOpen) {
       e.preventDefault(); held.add(e.code); syncInput();
       if (!UI.follow) { UI.follow = true; $('bFollow').classList.add('active'); }
       return;
     }
     if (e.code === 'KeyJ' && V.hero && !V.hero.dead) { const en = nearestEnemy(V.hero.i, V.hero.j, 5); if (en) orderAttack(en); else Sfx.play('slash'); return; }
     switch (e.code) {
-      case 'Escape': cancelPlace(); closeShop(); closeMap(); setTool('move'); select(null); break;
+      case 'Escape': cancelPlace(); closeShop(); closeMap(); closeResearch(); closeOptions(); setTool('move'); select(null); break;
       case 'Digit1': setTool('move'); break; case 'Digit2': setTool('gather'); break; case 'Digit3': openShop(); break;
-      case 'KeyH': heroHeal(); break; case 'KeyX': heroStop(); break; case 'KeyC': $('tHero').click(); break;
+      case 'KeyH': heroHeal(); break; case 'KeyB': heroCry(); break; case 'KeyT': openResearch(); break; case 'KeyO': openOptions(); break; case 'KeyX': heroStop(); break; case 'KeyC': $('tHero').click(); break;
       case 'Space': e.preventDefault(); heroStrike(); break; case 'KeyR': startRaid(); break;
       case 'Equal': case 'NumpadAdd': setZoom(UI.cam.zoom * 1.15); break; case 'Minus': case 'NumpadSubtract': setZoom(UI.cam.zoom / 1.15); break;
       case 'KeyE': $('tExpand').click(); break; case 'KeyF': $('bFollow').click(); break; case 'KeyM': UI.mapOpen ? closeMap() : openMap(); break; case 'KeyP': $('bPause').click(); break;
@@ -468,7 +486,7 @@ let last = 0, hudT = 0, saveT = 0;
 function frame(ts) {
   const dt = Math.min(0.05, (ts - last) / 1000 || 0.016); last = ts;
   try {
-    step(dt);
+    for (let k = 0; k < SET.speed; k++) step(dt);
     if (UI.banner) { UI.banner.t += dt; if (UI.banner.t > 3) UI.banner = null; }
     if (UI.follow && V.hero) { const k = 1 - Math.exp(-dt * 5); UI.cam.x += (isoX(V.hero.i, V.hero.j) - UI.cam.x) * k; UI.cam.y += (isoY(V.hero.i, V.hero.j) - 20 - UI.cam.y) * k; }
     if (UI.mouse.in) updateHover();
@@ -487,7 +505,7 @@ function refreshInfoLive() {
 function showError(err) { console.error(err); const el = $('err'); el.style.display = 'flex'; el.textContent = 'Something went wrong: ' + err.message; }
 
 Promise.all([Assets.load(), Hero.load(), BLD.load(), Foes.load()]).then(() => {
-  Trees.build(); Clouds.build(); wire(); resize(); Sfx.setMusic('peace');
+  loadSettings(); Trees.build(); Clouds.build(); wire(); resize(); Sfx.setMusic('peace');
   if (!loadGame()) newVillage();
   const h = hallCenter(); centerOn(h.i, h.j + 2); UI.cam.zoom = UI.W < 700 ? 0.7 : 0.95; refreshQuickBar();
   setTool('move'); refreshButtons(); refreshHud();

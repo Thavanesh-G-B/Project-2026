@@ -1,9 +1,9 @@
 'use strict';
 // Village mode, part 1: isometric projection, territory, the island terrain and the forest.
 const TW = 64, TH = 32;          // isometric tile size in px
-const GN = 61;                   // the island is GN x GN tiles
-const MID = 30;                  // centre tile index (the Town Hall and the four lanes meet here)
-const TERR_R = [12, 17, 23, 30]; // territory radius (Chebyshev, in tiles) per expansion level
+const GN = 87;                   // the island is GN x GN tiles
+const MID = 43;                  // centre tile index (the Town Hall and the four lanes meet here)
+const TERR_R = [12, 18, 25, 34, 43]; // territory radius (Chebyshev, in tiles) per expansion level
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -24,6 +24,14 @@ function mulberry(a) {
   };
 }
 
+// Groves: a slow noise field. Dense stands where it is high, open meadow where it is low (used by the ground colour and the tree layout).
+let _grove = null;
+function groveAt(seed, i, j) {
+  if (!_grove || _grove.seed !== seed) _grove = { seed, a: lat(9, seed + 61), b: lat(22, seed + 62) };
+  const u = clamp(i / GN, 0, 0.999), v = clamp(j / GN, 0, 0.999);
+  return sampleLat(_grove.a, 9, u, v) * 0.68 + sampleLat(_grove.b, 22, u, v) * 0.32;
+}
+
 // tile coords (float) <-> iso world px
 const isoX = (i, j) => (i - j) * TW / 2;
 const isoY = (i, j) => (i + j) * TH / 2;
@@ -41,7 +49,7 @@ const Terr = {
   levelOf(i, j) { const d = Math.max(Math.abs(i - MID), Math.abs(j - MID)); for (let k = 0; k < TERR_R.length; k++) if (d <= TERR_R[k]) return k + 1; return 99; },
   // raids start just inside the cloud bank, on the four lanes
   spawnPoints() {
-    const e = this.r + 1.6, lo = 0.8, hi = GN - 1.8;
+    const e = Math.min(this.r + 1.6, 30), lo = 0.8, hi = GN - 1.8;   // far-out raids start 30 tiles from the hall so they stay in view
     return [{ i: MID + 0.5, j: clamp(MID + 0.5 - e, lo, hi) }, { i: MID + 0.5, j: clamp(MID + 0.5 + e, lo, hi) },
       { i: clamp(MID + 0.5 - e, lo, hi), j: MID + 0.5 }, { i: clamp(MID + 0.5 + e, lo, hi), j: MID + 0.5 }];
   },
@@ -56,69 +64,76 @@ function sampleLat(a, n, u, v) {      // u, v in [0,1]
   return a0 + (b0 - a0) * sx + (c0 - a0) * sy + (a0 - b0 - c0 + d0) * sx * sy;
 }
 const Ground = {
-  canvas: null, ox: 0, oy: 0,
+  strips: [], W: 0, H: 0, ox: 0, oy: 0, STRIP: 640,
+  // The island is painted in horizontal strips (each a separate canvas): one canvas this big would break iOS's canvas size limit,
+  // and strips also let the pixel pass walk only the diamond that is actually land.
   build(seed) {
     const W = GN * TW + 240, H = GN * TH + 320;
-    const c = document.createElement('canvas'); c.width = W; c.height = H;
-    const g = c.getContext('2d');
-    this.canvas = c; this.ox = GN * TW / 2 + 120; this.oy = 120;
+    this.W = W; this.H = H; this.ox = GN * TW / 2 + 120; this.oy = 120; this.strips = [];
     const ox = this.ox, oy = this.oy;
     const tp = (i, j) => [ox + isoX(i, j), oy + isoY(i, j)];
-    this.cliffs(g, seed, tp);
-
-    // ---- per-pixel meadow, forest floor and dirt lanes (value noise sampled from coarse lattices)
     const L1 = lat(8, seed + 1), L2 = lat(30, seed + 2), L3 = lat(120, seed + 3), L4 = lat(240, seed + 4);
-    const gc = document.createElement('canvas'); gc.width = W; gc.height = H;
-    const gg = gc.getContext('2d'), img = gg.createImageData(W, H), d = img.data;
     const GRASS = [[40, 62, 32], [66, 96, 44], [98, 130, 58], [134, 160, 76], [164, 178, 92]];
     const DIRT = [[108, 84, 58], [140, 112, 78], [168, 140, 100], [188, 164, 124]];
     const ramp = (R, t) => { t = clamp(t, 0, 0.999) * (R.length - 1); const k = t | 0, f = t - k, a = R[k], b = R[k + 1]; return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]; };
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const px = x - ox, py = y - oy;
-        const fi = (px / 32 + py / 16) / 2, fj = (py / 16 - px / 32) / 2;
-        if (fi < 0 || fj < 0 || fi >= GN || fj >= GN) continue;
-        const u = fi / GN, v = fj / GN;
-        const n1 = sampleLat(L1, 8, u, v), n2 = sampleLat(L2, 30, u, v), n3 = sampleLat(L3, 120, u, v), n4 = sampleLat(L4, 240, u, v);
-        const dc = Math.max(Math.abs(fi - MID - 0.5), Math.abs(fj - MID - 0.5));
-        const forest = smoothstep(7, 17, dc + (n2 - 0.5) * 6);
-        // lane weight with organic edges
-        const ld = Math.min(Math.abs(fi - MID - 0.5), Math.abs(fj - MID - 0.5));
-        const plaza = smoothstep(4.6, 3.0, Math.hypot(fi - MID - 0.5, fj - MID - 0.5) + (n2 - 0.5) * 1.2);
-        let rw = Math.max(smoothstep(0, 1, (1.5 + (n2 - 0.5) * 0.9 + (n3 - 0.5) * 0.35 - ld) / 0.5), plaza);
-        // grass
-        let t = 0.18 + n1 * 0.32 + n2 * 0.3 + n3 * 0.14 + n4 * 0.1 - forest * 0.2;
-        let gcol = ramp(GRASS, t);
-        if (forest > 0.35 && n2 > 0.62) { const k = (n2 - 0.62) * 2.4 * forest; gcol = [gcol[0] + (96 - gcol[0]) * k, gcol[1] + (78 - gcol[1]) * k, gcol[2] + (48 - gcol[2]) * k]; }  // leaf litter
-        // dirt
-        let dt = 0.25 + n2 * 0.4 + n3 * 0.2 + n4 * 0.2;
-        let dcol = ramp(DIRT, dt);
-        const rut = Math.abs(ld - 0.62) < 0.1 || Math.abs(ld - 0.0) < 0.12 ? 0.9 : 1;      // wheel ruts
-        if (rw > 0.05) { const peb = vhash(x, y, seed + 9); if (peb > 0.992) dcol = [196, 190, 178]; else if (peb < 0.006) dcol = [84, 66, 46]; dcol = [dcol[0] * rut, dcol[1] * rut, dcol[2] * rut]; }
-        const edge = smoothstep(0.1, 0.55, rw) * (1 - smoothstep(0.55, 0.95, rw));          // dry, trampled shoulder
-        let col = [gcol[0] + (dcol[0] - gcol[0]) * rw, gcol[1] + (dcol[1] - gcol[1]) * rw, gcol[2] + (dcol[2] - gcol[2]) * rw];
-        if (edge > 0) { col[0] += 10 * edge; col[1] += 6 * edge; col[2] -= 4 * edge; }
-        const speck = (vhash(x, y, seed + 5) - 0.5) * 12;
-        // soft ambient occlusion toward the island rim, slight sun from the upper left
-        const rim = Math.min(fi, fj, GN - fi, GN - fj);
-        const ao = 0.78 + 0.22 * smoothstep(0, 2.2, rim);
-        const sun = 1.04 - (fi + fj) / (GN * 2) * 0.1;
-        const k = ao * sun;
-        const idx = (y * W + x) * 4;
-        d[idx] = clamp(col[0] * k + speck, 0, 255); d[idx + 1] = clamp(col[1] * k + speck, 0, 255); d[idx + 2] = clamp(col[2] * k + speck * 0.7, 0, 255);
-        d[idx + 3] = clamp(rim * 40, 0, 255);
+    for (let ys = 0; ys < H; ys += this.STRIP) {
+      const h = Math.min(this.STRIP, H - ys), c = document.createElement('canvas'); c.width = W; c.height = h;
+      const g = c.getContext('2d'); g.translate(0, -ys);
+      this.cliffs(g, seed, tp, ys, ys + h);
+      // ---- per-pixel meadow, forest floor and dirt lanes (value noise sampled from coarse lattices)
+      const gc = document.createElement('canvas'); gc.width = W; gc.height = h;
+      const gg = gc.getContext('2d'), img = gg.createImageData(W, h), d = img.data;
+      for (let y = ys; y < ys + h; y++) {
+        const py = y - oy, lo = Math.max(-2 * py, 2 * py - 64 * GN), hi = Math.min(2 * py, 64 * GN - 2 * py);
+        if (hi < lo) continue;
+        for (let x = Math.max(0, Math.floor(ox + lo)), xe = Math.min(W - 1, Math.ceil(ox + hi)); x <= xe; x++) {
+          const px = x - ox;
+          const fi = (px / 32 + py / 16) / 2, fj = (py / 16 - px / 32) / 2;
+          if (fi < 0 || fj < 0 || fi >= GN || fj >= GN) continue;
+          const u = fi / GN, v = fj / GN;
+          const n1 = sampleLat(L1, 8, u, v), n2 = sampleLat(L2, 30, u, v), n3 = sampleLat(L3, 120, u, v), n4 = sampleLat(L4, 240, u, v);
+          const dc = Math.max(Math.abs(fi - MID - 0.5), Math.abs(fj - MID - 0.5));
+          const forest = smoothstep(8, 18, dc + (n2 - 0.5) * 6) * (0.25 + 0.75 * smoothstep(0.42, 0.62, groveAt(seed, fi, fj)));   // darker floor only under the groves
+          // lane weight with organic edges
+          const ld = Math.min(Math.abs(fi - MID - 0.5), Math.abs(fj - MID - 0.5));
+          const plaza = smoothstep(4.6, 3.0, Math.hypot(fi - MID - 0.5, fj - MID - 0.5) + (n2 - 0.5) * 1.2);
+          let rw = Math.max(smoothstep(0, 1, (1.5 + (n2 - 0.5) * 0.9 + (n3 - 0.5) * 0.35 - ld) / 0.5), plaza);
+          // grass
+          let t = 0.2 + n1 * 0.32 + n2 * 0.3 + n3 * 0.14 + n4 * 0.1 - forest * 0.2;
+          let gcol = ramp(GRASS, t);
+          if (forest > 0.35 && n2 > 0.62) { const k = (n2 - 0.62) * 2.4 * forest; gcol = [gcol[0] + (96 - gcol[0]) * k, gcol[1] + (78 - gcol[1]) * k, gcol[2] + (48 - gcol[2]) * k]; }  // leaf litter
+          // dirt
+          let dt = 0.25 + n2 * 0.4 + n3 * 0.2 + n4 * 0.2;
+          let dcol = ramp(DIRT, dt);
+          const rut = Math.abs(ld - 0.62) < 0.1 || Math.abs(ld - 0.0) < 0.12 ? 0.9 : 1;      // wheel ruts
+          if (rw > 0.05) { const peb = vhash(x, y, seed + 9); if (peb > 0.992) dcol = [196, 190, 178]; else if (peb < 0.006) dcol = [84, 66, 46]; dcol = [dcol[0] * rut, dcol[1] * rut, dcol[2] * rut]; }
+          const edge = smoothstep(0.1, 0.55, rw) * (1 - smoothstep(0.55, 0.95, rw));          // dry, trampled shoulder
+          let col = [gcol[0] + (dcol[0] - gcol[0]) * rw, gcol[1] + (dcol[1] - gcol[1]) * rw, gcol[2] + (dcol[2] - gcol[2]) * rw];
+          if (edge > 0) { col[0] += 10 * edge; col[1] += 6 * edge; col[2] -= 4 * edge; }
+          const speck = (vhash(x, y, seed + 5) - 0.5) * 12;
+          // soft ambient occlusion toward the island rim, slight sun from the upper left
+          const rim = Math.min(fi, fj, GN - fi, GN - fj);
+          const ao = 0.78 + 0.22 * smoothstep(0, 2.2, rim);
+          const sun = 1.04 - (fi + fj) / (GN * 2) * 0.1;
+          const k = ao * sun;
+          const idx = ((y - ys) * W + x) * 4;
+          d[idx] = clamp(col[0] * k + speck, 0, 255); d[idx + 1] = clamp(col[1] * k + speck, 0, 255); d[idx + 2] = clamp(col[2] * k + speck * 0.7, 0, 255);
+          d[idx + 3] = clamp(rim * 40, 0, 255);
+        }
       }
+      gg.putImageData(img, 0, 0);
+      g.drawImage(gc, 0, ys);
+      this.details(g, seed, ox, oy, ys, ys + h);
+      this.strips.push({ y: ys, h, canvas: c });
     }
-    gg.putImageData(img, 0, 0);
-    g.drawImage(gc, 0, 0);
-    this.details(g, seed, ox, oy);
   },
   // layered earth cliffs below the two front edges, with a grass fringe, strata, roots and a ragged bottom
-  cliffs(g, seed, tp) {
+  cliffs(g, seed, tp, y0, y1) {
     for (const edge of ['i', 'j']) {
       const lit = edge === 'j';
       for (let k = 0; k < GN; k++) {
         const a = edge === 'i' ? tp(GN, k) : tp(k, GN), b = edge === 'i' ? tp(GN, k + 1) : tp(k + 1, GN);
+        if (Math.max(a[1], b[1]) + 90 < y0 || Math.min(a[1], b[1]) - 4 > y1) continue;      // belongs to another strip
         const depth = 34 + Math.round(vhash(k, edge === 'i' ? 1 : 2, seed) * 14) + Math.round(Math.sin(k * 0.35) * 5);
         const grad = g.createLinearGradient(0, a[1], 0, a[1] + depth);
         grad.addColorStop(0, lit ? '#8f7452' : '#6f563f'); grad.addColorStop(0.35, lit ? '#7a5f45' : '#5d4733'); grad.addColorStop(0.75, lit ? '#5a4535' : '#46372b'); grad.addColorStop(1, '#241c17');
@@ -156,12 +171,13 @@ const Ground = {
     }
   },
   // vector details on top of the pixel meadow: tufts, flowers, stones, mushrooms, fallen leaves
-  details(g, seed, ox, oy) {
+  details(g, seed, ox, oy, y0, y1) {
     const FL = ['#f4f0e0', '#f1d65a', '#c58ad8', '#e8847a', '#9cc4ee'];
     for (let i = 0; i < GN; i++) for (let j = 0; j < GN; j++) {
       const dc = Math.max(Math.abs(i - MID - 0.5), Math.abs(j - MID - 0.5)), road = isRoad(i, j);
       const cx = ox + isoX(i + 0.5, j + 0.5), cy = oy + isoY(i + 0.5, j + 0.5);
-      const forest = smoothstep(7, 17, dc);
+      if (cy < y0 - 30 || cy > y1 + 30) continue;                       // belongs to another strip
+      const forest = smoothstep(8, 18, dc) * (0.25 + 0.75 * smoothstep(0.42, 0.62, groveAt(seed, i + 0.5, j + 0.5)));
       const at = (s) => { const u = vhash(i * 3 + s, j, seed + 41) - 0.5, v = vhash(i, j * 3 + s, seed + 42) - 0.5; return [cx + (u - v) * TW * 0.5 * 0.9, cy + (u + v) * TH * 0.5 * 0.9]; };
       if (!road) {
         const nt = 3 + Math.floor(vhash(i, j, seed + 43) * 3);
@@ -195,7 +211,10 @@ const Ground = {
       }
     }
   },
-  draw(ctx) { ctx.drawImage(this.canvas, -this.ox, -this.oy); },
+  draw(ctx) {
+    const c = UI.cam, z = c.zoom, top = c.y - UI.H / 2 / z + this.oy - 4, bot = c.y + UI.H / 2 / z + this.oy + 4;      // only strips on screen
+    for (const s of this.strips) if (s.y < bot && s.y + s.h > top) ctx.drawImage(s.canvas, -this.ox, s.y - this.oy);
+  },
 };
 
 // ---------------------------------------------------------------- trees
@@ -319,15 +338,16 @@ const Trees = {
     if (snowy) { g.globalAlpha = 0.0; }
     return c;
   },
-  // deterministic forest layout: a clearing around the town hall, lanes kept open
+  // deterministic forest layout: a wide clearing around the town hall, lanes kept open, then separate groves with open meadow between them
+  // (a slow noise field decides where a grove stands; stray single trees fill in the meadow thinly)
   generate(seed) {
     const list = [];
     for (let i = 1; i < GN - 1; i++) for (let j = 1; j < GN - 1; j++) {
       if (isRoad(i, j)) continue;
       const d = Math.max(Math.abs(i - MID), Math.abs(j - MID));
-      if (d < 7) continue;
-      const clump = vhash(i >> 2, j >> 2, seed + 21), clump2 = vhash(i >> 3, j >> 3, seed + 23);
-      const p = smoothstep(6.5, 11, d) * (0.22 + clump * 0.42 + clump2 * 0.14);
+      if (d < 9) continue;
+      const grove = smoothstep(0.5, 0.64, groveAt(seed, i, j)), edgeFade = smoothstep(8.5, 15, d);
+      const p = edgeFade * (0.012 + grove * (0.2 + vhash(i >> 2, j >> 2, seed + 21) * 0.17));
       if (vhash(i, j, seed + 5) < p) {
         const conifer = vhash(i >> 3, j >> 3, seed + 24) > 0.62 || vhash(i, j, seed + 8) > 0.9;
         list.push({

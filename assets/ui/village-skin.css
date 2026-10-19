@@ -5,19 +5,19 @@
 :root { --px-font: 'Silkscreen', ui-monospace, Menlo, Consolas, monospace; }
 
 /* ---- buttons: teal by default, gold for the primary / active ones ---- */
-.btn, .toolbar button, .zoom button, #shopTabs button, .lnk, .tiny, #qbar button {
+.btn, .toolbar button, .zoom button, #shopTabs button, .tabs button, .seg button, .lnk, .tiny, #qbar button {
   --b: url(btn_teal.png); --bh: url(btn_teal_hover.png); --bd: url(btn_teal_down.png); --bw: 16px; --fg: #dfe9e3;
   border: 0 solid transparent; border-width: var(--bw); border-image: var(--b) 8 fill / var(--bw) stretch; border-radius: 0; background: none; box-shadow: none;
   color: var(--fg); font-family: var(--px-font); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; line-height: 1.2; image-rendering: pixelated;
   padding: 0 2px; min-height: calc(var(--bw) * 2); text-shadow: 0 1px 0 rgba(0, 0, 0, .5);
 }
-.btn:hover:not(:disabled), .toolbar button:hover:not(:disabled), .zoom button:hover, #shopTabs button:hover, .lnk:hover, .tiny:hover, #qbar button:hover { border-image-source: var(--bh); border-color: transparent; }
+.btn:hover:not(:disabled), .toolbar button:hover:not(:disabled), .zoom button:hover, #shopTabs button:hover, .tabs button:hover, .seg button:hover, .lnk:hover, .tiny:hover, #qbar button:hover { border-image-source: var(--bh); border-color: transparent; }
 .btn:active:not(:disabled), .toolbar button:active:not(:disabled), .zoom button:active { border-image-source: var(--bd); }
 .toolbar button:disabled, .btn:disabled { filter: grayscale(.8) brightness(.8); opacity: .75; }
-.zoom button, #shopTabs button, .lnk, .tiny, .hacts .btn { --bw: 8px; }
+.zoom button, #shopTabs button, .tabs button, .seg button, .lnk, .tiny, .hacts .btn, .tech .btn { --bw: 8px; }
 #qbar button { --bw: 8px; padding: 0; }
 #qbar button canvas { border-radius: 0; }
-.toolbar button.pri, .btn.gold, .zoom button.active, .toolbar button.active, #shopTabs button.on {
+.toolbar button.pri, .btn.gold, .zoom button.active, .toolbar button.active, #shopTabs button.on, .tabs button.on, .seg button.on {
   --b: url(btn_gold.png); --bh: url(btn_gold_hover.png); --bd: url(btn_gold_down.png); --fg: #1d1a10; text-shadow: 0 1px 0 rgba(255, 255, 255, .35); background: none; border-color: transparent; font-weight: 400;
 }
 .btn.red { --b: url(btn_red.png); --bh: url(btn_red_hover.png); --bd: url(btn_red_down.png); --fg: #ffe9e2; background: none; border-color: transparent; }
@@ -33,13 +33,13 @@
 .card-head, .toolbar, .info { border-color: rgba(86, 124, 124, .4); }
 .toolbar { background: rgba(10, 22, 26, .5); }
 .sheet { padding: 0 6px; }
-.pill, .chip, .card-b, .cost, .htargets .tg, .zoom, .xp {
+.pill, .chip, .card-b, .tech, .cost, .htargets .tg, .zoom, .xp {
   border: 0 solid transparent; border-width: 12px; border-image: url(slot_teal.png) 8 fill / 12px stretch; border-radius: 0; background: none; image-rendering: pixelated;
 }
 .pill { padding: 0 2px; font-family: var(--px-font); font-size: 10px; letter-spacing: .04em; }
 .chip { padding: 0 2px; box-shadow: none; }
 .chip.danger { filter: hue-rotate(-40deg) saturate(1.8); }
-.chip.hud { min-width: 200px; border-image-source: url(panel_teal2.png); border-image-slice: 12; padding: 0 4px; background: none; }
+.chip.hud { min-width: 240px; border-image-source: url(panel_teal2.png); border-image-slice: 12; padding: 0 4px; background: none; }
 .card-b { padding: 0 2px; }
 .card-b canvas { border-radius: 0; }
 .cost { border-width: 6px; border-image-width: 6px; border-image-slice: 8; padding: 0 2px; font-size: 11px; }
@@ -69,3 +69,23 @@ input[type=text], input:not([type]) { border: 0 solid transparent; border-width:
 .hacts .btn { padding: 0 2px; min-height: 0; }
 .hacts { gap: 2px 6px; }
 .hp { gap: 2px 18px; }
+
+/* ---- HUD extras, research and options panels ---- */
+.hportrait { border-radius: 0; border: 3px solid #0a161a; outline: 2px solid #568080; }
+.hudhead .hudid b { font-family: var(--px-font); font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
+.hudhead .hudid small, .badge { font-family: var(--px-font); font-size: 8px; letter-spacing: .04em; }
+.hudstats, .hudinc { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.hudhead .hudid b { color: #f2ead0; }
+.hudhead .hudid small { color: #e2bd6a; }
+.chip.hud { background: rgba(8, 20, 24, .93); background-clip: padding-box; }
+.hud .row .num { color: #f2ead0; }
+.hacts .btn .cost { color: #bfe8b0; background: #12262c; background-clip: padding-box; }
+.badge { border-radius: 0; border-width: 2px; }
+.hudabil button { border-radius: 0; border: 2px solid #040a0d; box-shadow: inset 0 0 0 2px #568080; background: #12282f; }
+.hudabil button b, .hudabil button em { font-family: var(--px-font); }
+.tech .ti { border-radius: 0; border: 2px solid #040a0d; box-shadow: inset 0 0 0 2px #568080; font-family: var(--px-font); }
+.tech .tb b { font-family: var(--px-font); font-size: 11px; text-transform: uppercase; letter-spacing: .02em; }
+.pips i { border-radius: 0; }
+.resnote { border-radius: 0; }
+.orow b { font-family: var(--px-font); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.toolbar kbd { font-family: var(--px-font); }

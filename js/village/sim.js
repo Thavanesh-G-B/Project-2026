@@ -1,12 +1,22 @@
 'use strict';
 // Village mode, part 4: simulation (buildings, pathfinding, hero, guards, enemies, raids, saving).
-const SAVE_KEY = 'ashen-hollow-village-v1';
+const SAVE_KEY = 'ashen-hollow-village-v1', SET_KEY = 'ashen-hollow-village-settings';
+// Player options, kept across villages.
+const SET = { diff: 'normal', speed: 1, auto: false, nums: true, bars: 'hurt', sway: true, music: true };
+function loadSettings() { try { Object.assign(SET, JSON.parse(localStorage.getItem(SET_KEY)) || {}); } catch (e) { /* defaults */ } if (!DIFF[SET.diff]) SET.diff = 'normal'; if (![1, 2, 3].includes(SET.speed)) SET.speed = 1; }
+function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify(SET)); } catch (e) { /* storage unavailable */ } }
+const tech = k => V.tech[k] || 0;
+const towerMul = type => 1 + 0.12 * tech(type === 'archer' ? 'fletching' : type === 'magetower' || type === 'tesla' ? 'arcana' : 'gunnery');
+const bMaxHp = b => Math.round(BDEF[b.type].hp[b.level - 1] * (1 + 0.08 * tech('masonry')));
+const buildTime = t => Math.max(1, Math.round(t * (1 - 0.08 * tech('carpentry'))));
+const hasMarket = () => V.buildings.some(b => b.type === 'market' && b.state === 'built');
+const hasAcademy = () => V.buildings.some(b => b.type === 'academy' && b.state === 'built');
 
 const V = {
   seed: 1, res: { gold: 300, wood: 200 }, buildings: [], trees: [], occ: new Int16Array(GN * GN),
-  uidn: 0, selHero: false, selEnemy: null, hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [],
+  uidn: 0, selHero: false, selEnemy: null, hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
-  heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
+  heroLevel: 1, heroXp: 0, tech: {}, train: {}, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
   cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
 };
 const tileOf = (v) => Math.floor(v);
@@ -25,12 +35,13 @@ function caps() {
     const d = BDEF[b.type];
     if (b.type === 'townhall' || b.type === 'storage') { const c = d.cap[b.level - 1]; g += c; w += c; }
   }
-  return { gold: g, wood: w };
+  const k = 1 + 0.12 * tech('granary');
+  return { gold: Math.round(g * k), wood: Math.round(w * k) };
 }
 function addRes(kind, n) {
   const c = caps()[kind];
   const before = V.res[kind];
-  V.res[kind] = Math.min(c, V.res[kind] + n);
+  V.res[kind] = Math.max(before, Math.min(c, before + n));      // a full store never swallows what you already hold
   return V.res[kind] - before;
 }
 const canAfford = cost => !cost || Object.keys(cost).every(k => V.res[k] >= cost[k]);
@@ -48,7 +59,7 @@ function addBuilding(type, i, j, opt) {
     id: V.nextId++, type, i, j, w: d.w, d: d.d, level: o.level || 1, state: o.state || 'built', hp: 0, maxHp: 0,
     buildT: o.buildT || 0, buildTotal: o.buildTotal || 0, up: o.up || 0, prod: o.prod || 0, cd: 0, aim: 0.8, armed: true, flash: 0, guardT: 0, rubble: false,
   };
-  b.maxHp = d.hp[b.level - 1]; b.hp = o.hp !== undefined ? o.hp : b.maxHp;
+  b.maxHp = bMaxHp(b); b.hp = o.hp !== undefined ? o.hp : b.maxHp;
   V.buildings.push(b);
   if (b.state !== 'ruin') setOcc(b, b.id);
   return b;
@@ -76,7 +87,7 @@ function buildNew(type, i, j) {
   if (why) return why;
   const d = BDEF[type];
   pay(d.cost[0]);
-  const t = d.time[0];
+  const t = buildTime(d.time[0]);
   addBuilding(type, i, j, { state: 'building', buildT: t, buildTotal: t, hp: 1 });
   sfxAt('place', i + 1, j + 1); V.cb.changed();
   return null;
@@ -97,7 +108,7 @@ function upgradeBuilding(b) {
   if (why) return why;
   const d = BDEF[b.type];
   pay(d.cost[b.level]);
-  b.state = 'building'; b.up = b.level + 1; b.buildTotal = d.time[b.level]; b.buildT = b.buildTotal;
+  b.state = 'building'; b.up = b.level + 1; b.buildTotal = buildTime(d.time[b.level]); b.buildT = b.buildTotal;
   sfxAt('craft', b.i + 1, b.j + 1); V.cb.changed();
   return null;
 }
@@ -173,7 +184,7 @@ function findPath(si, sj, goalFn, hFn, walls, maxN, lock) {
   const start = { i: si, j: sj, g: 0, f: hFn(si, sj), p: null };
   heap.push(start); best.set(key(si, sj), 0);
   let n = 0;
-  while (heap.size && n++ < (maxN || 3500)) {
+  while (heap.size && n++ < (maxN || 9000)) {
     const c = heap.pop();
     if (c.g > best.get(key(c.i, c.j))) continue;
     if (goalFn(c.i, c.j)) { const path = []; for (let q = c; q.p; q = q.p) path.push({ i: q.i, j: q.j }); return path.reverse(); }
@@ -195,7 +206,7 @@ function findPath(si, sj, goalFn, hFn, walls, maxN, lock) {
 }
 function pathToBuilding(u, b, reach, walls) {   // enemies ignore the cloud boundary
   const hf = (i, j) => rectDist(i + 0.5, j + 0.5, b);
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => tileCost(i, j, walls) !== Infinity && rectDist(i + 0.5, j + 0.5, b) <= reach, hf, walls, 4500, false);
+  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => tileCost(i, j, walls) !== Infinity && rectDist(i + 0.5, j + 0.5, b) <= reach, hf, walls, 9000, false);
 }
 // Tile-by-tile A* paths zig-zag (east, north-east, east, ...), which made walking units wiggle their facing. String-pulling keeps only the
 // corners that are really needed: each waypoint is the furthest one in clear sight (with a body's width of room) of the one before.
@@ -224,8 +235,8 @@ function pathToTile(u, gi, gj) {                 // hero / guards stay inside th
 }
 function pathToTileRaw(u, gi, gj) {
   const hf = (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj));
-  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false, 3500, true)
-    || (tileCost(gi, gj, false, true) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true) : null);
+  return findPath(tileOf(u.i), tileOf(u.j), (i, j) => i === gi && j === gj, hf, false, 8000, true)
+    || (tileCost(gi, gj, false, true) === Infinity ? findPath(tileOf(u.i), tileOf(u.j), (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 8000, true) : null);
 }
 // The chopping pictures face the camera (down-left or down-right), so the hero must stand where the tree is beside or below him
 // on screen. Preferred spots: level with the tree on its left / right, then the two upper sides; any neighbour is the last resort.
@@ -236,11 +247,11 @@ function pathToTree(u, t) {
     const spots = tier.map(([a, b]) => [t.i + a, t.j + b]).filter(([i, j]) => inGrid(i, j) && tileCost(i, j, false, true) !== Infinity);
     if (spots.some(([i, j]) => i === si && j === sj)) return [];                       // already standing on a good spot
     let best = null;
-    for (const [gi, gj] of spots) { const p = findPath(si, sj, (i, j) => i === gi && j === gj, (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)), false, 3500, true); if (p && (!best || p.length < best.length)) best = p; }
+    for (const [gi, gj] of spots) { const p = findPath(si, sj, (i, j) => i === gi && j === gj, (i, j) => Math.max(Math.abs(i - gi), Math.abs(j - gj)), false, 8000, true); if (p && (!best || p.length < best.length)) best = p; }
     if (best) return smoothPath(u, best, true);
   }
   const hf = (i, j) => Math.max(Math.abs(i - t.i), Math.abs(j - t.j));
-  const last = findPath(si, sj, (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 3500, true);
+  const last = findPath(si, sj, (i, j) => Math.abs(i - t.i) <= 1 && Math.abs(j - t.j) <= 1 && tileCost(i, j, false, true) !== Infinity, hf, false, 8000, true);
   return last ? smoothPath(u, last, true) : last;
 }
 // move a unit along its path; returns true while still travelling
@@ -259,7 +270,16 @@ function faceFrom(u) { if (u.dir) { u.fdir = { x: u.dir.x, y: u.dir.y }; const s
 
 // ---------------------------------------------------------------- hero
 const heroTierNow = () => Math.min(3, Math.floor((V.heroLevel - 1) / 4));
-const heroStats = () => ({ maxHp: HERO_DEF.hp + (V.heroLevel - 1) * 25, dmg: HERO_DEF.dmg + (V.heroLevel - 1) * 3, maxMana: HERO_DEF.mana + (V.heroLevel - 1) * 10, red: HERO_DEF.armorRed[heroTierNow()] });
+const trained = k => V.train[k] || 0;
+const heroStats = () => {
+  const c = V.hero && V.hero.cryT > 0 ? HERO_DEF.cryDmg : 1;
+  return {
+    maxHp: Math.round((HERO_DEF.hp + (V.heroLevel - 1) * 25) * (1 + 0.08 * trained('vigor'))),
+    dmg: Math.round((HERO_DEF.dmg + (V.heroLevel - 1) * 3) * (1 + 0.06 * trained('might')) * c),
+    maxMana: HERO_DEF.mana + (V.heroLevel - 1) * 10 + 12 * trained('mind'), red: HERO_DEF.armorRed[heroTierNow()],
+    regen: HERO_DEF.manaRegen * (1 + 0.1 * trained('mind')), speed: HERO_DEF.speed * (1 + 0.04 * trained('fleet')),
+  };
+};
 function spawnHero() {
   const hall = V.buildings.find(b => b.type === 'townhall');
   const s = heroStats();
@@ -323,6 +343,18 @@ function heroHeal() {
   burst(h.i, h.j, 16, ['#bfffcf', '#ffffff', '#7be08a'], 60, 0.9, 40);
   return true;
 }
+function heroCry() {
+  const h = V.hero; if (!h || h.dead) return false;
+  if (V.heroLevel < HERO_DEF.cryLevel) { Sfx.play('deny'); toast(`Battle Cry unlocks at hero level ${HERO_DEF.cryLevel}.`); return false; }
+  if (h.cryCd > 0) { Sfx.play('deny'); return false; }
+  if (h.mana < HERO_DEF.cryMana) { Sfx.play('deny'); toast('Not enough mana.'); return false; }
+  h.mana -= HERO_DEF.cryMana; h.cryCd = HERO_DEF.cryCd; h.cryT = HERO_DEF.cryDur;
+  for (const g of V.guards) if (Math.hypot(g.i - h.i, g.j - h.j) <= HERO_DEF.cryRadius) g.cryT = HERO_DEF.cryDur;
+  V.rings.push({ i: h.i, j: h.j, r: 0.4, max: HERO_DEF.cryRadius, t: 0, gold: true }); V.rings.push({ i: h.i, j: h.j, r: 0.2, max: HERO_DEF.cryRadius * 0.6, t: 0.1, gold: true });
+  Sfx.play('horn'); floatText(h.i, h.j, 80, 'BATTLE CRY', '#ffd070'); V.shake = Math.max(V.shake, 3);
+  burst(h.i, h.j, 16, ['#ffe9a0', '#ffd070', '#fff'], 120, 0.6, 40);
+  return true;
+}
 function heroStop() { const h = V.hero; if (h && !h.dead) { h.order = null; h.path = []; h.chop = 0; h.hits = 0; } }
 function heroHome() { const h = V.hero, hall = V.buildings.find(b => b.type === 'townhall'); if (h && !h.dead && hall) orderMove(hall.i + 1.5, hall.j + hall.d + 0.7); }
 const STANCES = ['aggressive', 'defensive', 'hold'];
@@ -336,8 +368,8 @@ function updateHero(dt) {
   const h = V.hero; if (!h) return;
   h.anim += dt; h.inv = Math.max(0, h.inv - dt); h.hurt = Math.max(0, h.hurt - dt); h.strikeCd = Math.max(0, h.strikeCd - dt);
   const st = heroStats();
-  h.maxMana = st.maxMana; h.healCd = Math.max(0, (h.healCd || 0) - dt);
-  if (!h.dead) h.mana = Math.min(h.maxMana, h.mana + dt * HERO_DEF.manaRegen * (V.raid.active ? 1 : 1.8));
+  h.maxMana = st.maxMana; h.healCd = Math.max(0, (h.healCd || 0) - dt); h.cryCd = Math.max(0, (h.cryCd || 0) - dt); h.cryT = Math.max(0, (h.cryT || 0) - dt);
+  if (!h.dead) h.mana = Math.min(h.maxMana, h.mana + dt * st.regen * (V.raid.active ? 1 : 1.8));
   if (h.dead) {
     h.respawn -= dt;
     if (h.respawn <= 0) { const hall = V.buildings.find(b => b.type === 'townhall'); h.dead = false; h.hp = st.maxHp; h.i = hall.i + 1.5; h.j = hall.j + hall.d + 0.7; h.order = null; toast('Your hero has returned.'); }
@@ -370,7 +402,7 @@ function updateHero(dt) {
   const inp = V.input, kb = !!(inp && (inp.x || inp.y));
   if (kb) {
     h.order = null; h.path = []; h.chop = 0; h.hits = 0;
-    const di = inp.x + inp.y, dj = inp.y - inp.x, l = Math.hypot(di, dj) || 1, sp = HERO_DEF.speed * 1.08 * dt;   // screen right = tile (1,-1), screen down = tile (1,1): the same eight directions as the pictures
+    const di = inp.x + inp.y, dj = inp.y - inp.x, l = Math.hypot(di, dj) || 1, sp = st.speed * 1.08 * dt;   // screen right = tile (1,-1), screen down = tile (1,1): the same eight directions as the pictures
     const vx = di / l * sp, vy = dj / l * sp, ok = (i, j) => Terr.has(tileOf(i), tileOf(j)) && tileCost(tileOf(i), tileOf(j), false, true) !== Infinity;
     const nx = h.i + vx, ny = h.j + vy;
     if (ok(nx, ny)) { h.i = nx; h.j = ny; } else if (ok(nx, h.j)) h.i = nx; else if (ok(h.i, ny)) h.j = ny;
@@ -382,7 +414,7 @@ function updateHero(dt) {
     else {
       const d = Math.hypot(o.e.i - h.i, o.e.j - h.j);
       if (d <= HERO_DEF.range) { lookAt(h, o.e.i, o.e.j); h.atk = 0; h.atkHit = false; h.atkTarget = o.e; sfxAt('slash', h.i, h.j); }
-      else { h.pathT = (h.pathT || 0) - dt; if (h.pathT <= 0 || !h.path.length) { h.path = pathToTile(h, tileOf(o.e.i), tileOf(o.e.j)) || []; h.pathT = 0.4; } moving = followPath(h, dt, HERO_DEF.speed); }
+      else { h.pathT = (h.pathT || 0) - dt; if (h.pathT <= 0 || !h.path.length) { h.path = pathToTile(h, tileOf(o.e.i), tileOf(o.e.j)) || []; h.pathT = 0.4; } moving = followPath(h, dt, st.speed); }
     }
   } else if (o && o.type === 'chop') {
     const t = o.t;
@@ -392,9 +424,9 @@ function updateHero(dt) {
       lookAt(h, t.i + 0.5 + (t.ox || 0), t.j + 0.5 + (t.oj || 0)); h.chopping = true; h.chop += dt;
       const due = h.chop >= 0.558 ? Math.floor((h.chop - 0.558) / 0.9) + 1 : 0;
       while (h.hits < due && h.order === o) { h.hits++; chopHit(h, t); }
-    } else moving = followPath(h, dt, HERO_DEF.speed);
+    } else moving = followPath(h, dt, st.speed);
   } else if (o && o.type === 'move') {
-    moving = followPath(h, dt, HERO_DEF.speed);
+    moving = followPath(h, dt, st.speed);
     if (!moving) h.order = null;
   } else {
     // idle: engage anything that comes close
@@ -445,14 +477,15 @@ function updateGuards(dt) {
     const d = BDEF.barracks, want = d.guards[b.level - 1], have = V.guards.filter(g => g.home === b.id).length;
     if (have < want) {
       b.guardT -= dt;
-      if (b.guardT <= 0) { b.guardT = 9; V.guards.push({ id: V.nextId++, home: b.id, i: b.i + b.w / 2 + 0.3, j: b.j + b.d + 0.5, hp: d.ghp[b.level - 1], maxHp: d.ghp[b.level - 1], level: b.level, face: 1, path: [], atk: -1, cd: 0, dead: false, walkT: 0, anim: 0, wander: 0 }); burst(b.i + 1, b.j + b.d, 8, ['#fff', '#cde'], 60, 0.4); }
+      if (b.guardT <= 0) { b.guardT = 9; V.guards.push({ id: V.nextId++, home: b.id, i: b.i + b.w / 2 + 0.3, j: b.j + b.d + 0.5, hp: Math.round(d.ghp[b.level - 1] * (1 + 0.1 * tech('tactics'))), maxHp: Math.round(d.ghp[b.level - 1] * (1 + 0.1 * tech('tactics'))), level: b.level, face: 1, path: [], atk: -1, cd: 0, dead: false, walkT: 0, anim: 0, wander: 0 }); burst(b.i + 1, b.j + b.d, 8, ['#fff', '#cde'], 60, 0.4); }
     }
   }
   for (const g of V.guards) {
     const home = bById(g.home);
     if (!home || home.state !== 'built') { g.dead = true; continue; }
-    g.anim += dt; g.cd -= dt;
-    const d = BDEF.barracks, dmg = d.gdmg[home.level - 1];
+    g.anim += dt; g.cd -= dt; g.cryT = Math.max(0, (g.cryT || 0) - dt);
+    const d = BDEF.barracks, tk = 1 + 0.1 * tech('tactics'), dmg = Math.round(d.gdmg[home.level - 1] * tk * (g.cryT > 0 ? HERO_DEF.cryGuard : 1));
+    { const mh = Math.round(d.ghp[home.level - 1] * tk); if (g.maxHp !== mh) { g.hp = Math.min(mh, g.hp + Math.max(0, mh - g.maxHp)); g.maxHp = mh; } }
     if (g.atk >= 0) {
       g.atk += dt;
       if (!g.atkHit && g.atk >= 0.2) { g.atkHit = true; const t = g.target; if (t && !t.dying && Math.hypot(t.i - g.i, t.j - g.j) < 1.5) { t.hurt(dmg, 'guard'); } }
@@ -625,7 +658,7 @@ function updateDefenses(dt) {
       b.hamT = (b.hamT || 0) - dt; if (b.hamT <= 0) { b.hamT = rnd(0.55, 0.9); sfxAt('hammer', b.i + b.w / 2, b.j + b.d / 2); }
       if (b.buildT <= 0) {
         const d = BDEF[b.type];
-        if (b.up) { b.level = b.up; b.up = 0; } b.state = 'built'; b.maxHp = d.hp[b.level - 1]; b.hp = b.maxHp; b.armed = true;
+        if (b.up) { b.level = b.up; b.up = 0; } b.state = 'built'; b.maxHp = bMaxHp(b); b.hp = b.maxHp; b.armed = true;
         burst(b.i + b.w / 2, b.j + b.d / 2, 18, ['#ffe08a', '#fff', '#c9a070'], 120, 0.7, 30); sfxAt(b.level > 1 ? 'upgrade' : 'done', b.i + b.w / 2, b.j + b.d / 2);
         toast(`${d.name} ${b.level > 1 ? 'upgraded to level ' + b.level : 'is ready'}.`); V.cb.changed();
       }
@@ -633,7 +666,9 @@ function updateDefenses(dt) {
     }
     if (b.state !== 'built') continue;
     const d = BDEF[b.type];
-    if (d.kind === 'collector') { b.prod = Math.min(d.store[b.level - 1], b.prod + d.rate[b.level - 1] * dt); }
+    if (d.kind === 'collector') { b.prod = Math.min(d.store[b.level - 1], b.prod + d.rate[b.level - 1] * (1 + 0.12 * tech(d.res === 'gold' ? 'prospect' : 'forestry')) * dt);
+      if (SET.auto && b.prod >= d.store[b.level - 1] * 0.98 && V.res[d.res] < caps()[d.res]) collect(b);      // the village sends a cart when the store is full
+    }
     else if (d.kind === 'defense') {
       b.cd -= dt;
       const cx = b.i + b.w / 2, cy = b.j + b.d / 2;
@@ -651,9 +686,10 @@ function updateDefenses(dt) {
         b.aim += clamp(da, -dt * 7, dt * 7);
         if (b.cd <= 0) {
           b.cd = d.cd;
-          const dmg = d.dmg[b.level - 1];
+          const dmg = Math.round(d.dmg[b.level - 1] * towerMul(b.type));
           const dd = Math.hypot(tgt.i - cx, tgt.j - cy);
-          if (b.type === 'archer') { V.proj.push({ kind: 'arrow', i: cx, j: cy, z: 72, ti: tgt.i, tj: tgt.j, te: tgt, dmg, speed: 13, t: 0 }); sfxAt('arrow', cx, cy); }
+          if (b.type === 'tesla') teslaZap(b, tgt, cx, cy, dmg);
+          else if (b.type === 'archer') { V.proj.push({ kind: 'arrow', i: cx, j: cy, z: 72, ti: tgt.i, tj: tgt.j, te: tgt, dmg, speed: 13, t: 0 }); sfxAt('arrow', cx, cy); }
           else if (b.type === 'magetower') { V.proj.push({ kind: 'bolt', i: cx, j: cy, z: 84, ti: tgt.i, tj: tgt.j, te: tgt, dmg, splash: d.splash, speed: 9, t: 0, air: true }); sfxAt('magic', cx, cy); b.recoil = 0.25; }
           else if (b.type === 'mortar') { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i + (tgt.vx || 0), tj: tgt.j, dmg, splash: d.splash, speed: 4.6, t: 0, d0: dd, arc: 70 }); sfxAt('mortar', cx, cy); b.recoil = 0.3; burst(cx + Math.cos(b.aim) * 0.5, cy + Math.sin(b.aim) * 0.5, 10, ['#ddd', '#999', '#ffcf70'], 60, 0.6, 30); }
           else { V.proj.push({ kind: 'ball', i: cx, j: cy, z: 24, ti: tgt.i, tj: tgt.j, dmg, splash: d.splash, speed: 7.5, t: 0, d0: dd, arc: 28 }); sfxAt('cannon', cx, cy); b.recoil = 0.2; burst(cx + Math.cos(b.aim) * 0.6, cy + Math.sin(b.aim) * 0.6, 6, ['#ddd', '#999'], 40, 0.5); }
@@ -678,12 +714,62 @@ function updateDefenses(dt) {
           b.armed = false; sfxAt('explode', b.i + b.w / 2, b.j + b.d / 2); V.shake = Math.max(V.shake, 5);
           burst(b.i + 0.5, b.j + 0.5, 22, ['#b9bcc0', '#e8e8e8', '#6a6a6a'], 150, 0.6, 30);
           V.rings.push({ i: b.i + 0.5, j: b.j + 0.5, r: 0.2, max: 1.5, t: 0 });
-          for (const t of V.enemies) if (!t.dying && !t.flying && Math.hypot(t.i - b.i - 0.5, t.j - b.j - 0.5) < 1.5) t.hurt(d.dmg[b.level - 1], 'trap');
+          for (const t of V.enemies) if (!t.dying && !t.flying && Math.hypot(t.i - b.i - 0.5, t.j - b.j - 0.5) < 1.5) t.hurt(Math.round(d.dmg[b.level - 1] * towerMul('trap')), 'trap');
           break;
         }
       }
     }
   }
+}
+// Tesla coil: an instant arc that jumps between up to `chain` enemies, losing a fifth of its punch with every jump.
+function teslaZap(b, first, cx, cy, dmg) {
+  const d = BDEF.tesla, hit = new Set([first]), pts = [{ i: cx, j: cy, z: 100 }, { i: first.i, j: first.j, z: 28 }];
+  let cur = first, dm = dmg;
+  first.hurt(dm, 'tower');
+  for (let k = 1; k < d.chain[b.level - 1]; k++) {
+    let nx = null, nd = 2.8;
+    for (const e of V.enemies) { if (e.dying || hit.has(e)) continue; const q = Math.hypot(e.i - cur.i, e.j - cur.j); if (q < nd) { nd = q; nx = e; } }
+    if (!nx) break;
+    dm *= 0.8; nx.hurt(Math.round(dm), 'tower'); hit.add(nx); pts.push({ i: nx.i, j: nx.j, z: 28 }); cur = nx;
+  }
+  V.arcs.push({ pts, t: 0, seed: Math.random() * 99 });
+  sfxAt('magic', cx, cy); b.recoil = 0.25;
+  for (const p of pts.slice(1)) burst(p.i, p.j, 5, ['#bfe6ff', '#fff', '#7fb0ff'], 80, 0.3, 24);
+}
+// ---------------------------------------------------------------- research, hero training, trading
+const techNeedHall = n => Math.ceil((n + 1) / 2);
+function techCheck(k) {
+  const T = TECH[k], n = tech(k);
+  if (!hasAcademy()) return 'Build an Academy first.';
+  if (n >= T.max) return 'Fully researched.';
+  if (hallLevel() < techNeedHall(n)) return `Level ${n + 1} needs Town Hall level ${techNeedHall(n)}.`;
+  if (!canAfford(T.cost(n))) return 'Not enough resources.';
+  return null;
+}
+function researchTech(k) {
+  const why = techCheck(k); if (why) return why;
+  pay(TECH[k].cost(tech(k))); V.tech[k] = tech(k) + 1;
+  if (k === 'masonry') for (const b of V.buildings) if (b.state === 'built') { const m = bMaxHp(b), r = b.hp / b.maxHp; b.maxHp = m; b.hp = Math.min(m, Math.max(b.hp, r * m)); }
+  Sfx.play('upgrade'); toast(`${TECH[k].name} ${V.tech[k]}: ${TECH[k].per}.`); V.cb.changed();
+  return null;
+}
+const skillPoints = () => Math.max(0, V.heroLevel - 1 - TRAIN_ORDER.reduce((a, k) => a + (V.train[k] || 0), 0));
+function trainHero(k) {
+  const T = TRAIN[k], n = V.train[k] || 0;
+  if (n >= T.max) return 'Fully trained.';
+  if (skillPoints() <= 0) return 'No skill points. Your hero earns one every level.';
+  V.train[k] = n + 1;
+  if (V.hero) { const s = heroStats(); V.hero.maxHp = s.maxHp; V.hero.hp = Math.min(s.maxHp, V.hero.hp + (k === 'vigor' ? s.maxHp * 0.08 : 0)); V.hero.maxMana = s.maxMana; }
+  Sfx.play('power'); V.cb.changed();
+  return null;
+}
+const TRADE = { sellWood: { give: 'wood', get: 'gold', n: 100, gain: 55 }, buyWood: { give: 'gold', get: 'wood', n: 100, gain: 75 } };
+function trade(kind, mult) {
+  const T = TRADE[kind], m = mult || 1, n = T.n * m, gain = T.gain * m;
+  if (!hasMarket()) return 'Build a Trading Post first.';
+  if (V.res[T.give] < n) return `You need ${n} ${T.give}.`;
+  if (V.res[T.get] >= caps()[T.get]) return `Your ${T.get} storage is full.`;
+  V.res[T.give] -= n; addRes(T.get, gain); Sfx.play('coin'); return null;
 }
 function updateProjectiles(dt) {
   for (const p of V.proj) {
@@ -711,7 +797,7 @@ function updateProjectiles(dt) {
 
 // ---------------------------------------------------------------- raids
 function raidQueue(n) {
-  const q = []; let pts = 5 + 3 * n;
+  const q = []; let pts = (5 + 3 * n) * DIFF[SET.diff].count;
   while (pts > 0) {
     const r = Math.random();
     if (n >= 3 && r < 0.12 && pts >= 3) { q.push('necro'); pts -= 3; }
@@ -736,9 +822,9 @@ function startRaid() {
 }
 function spawnEnemy(type) {
   const n = V.raid.n, sp = Terr.spawnPoints(), lane = sp[V.raid.lanes[Math.floor(Math.random() * V.raid.lanes.length)]];
-  const hpMul = (1 + 0.1 * (n - 1)) * (EDATA[type].boss ? 1 + 0.4 * (Math.floor(n / 5) - 1) : 1);
+  const hpMul = DIFF[SET.diff].hp * (1 + 0.1 * (n - 1)) * (EDATA[type].boss ? 1 + 0.4 * (Math.floor(n / 5) - 1) : 1);
   const e = new Enemy(type, lane.i + rnd(-0.8, 0.8), lane.j + rnd(-0.8, 0.8), hpMul);
-  e.dmgMul = 1 + 0.05 * (n - 1);
+  e.dmgMul = (1 + 0.05 * (n - 1)) * DIFF[SET.diff].dmg;
   V.enemies.push(e);
   if (Math.random() < 0.5 || EDATA[type].boss) sfxAt(type === 'skeleton' || type === 'bonelord' ? 'skeleton' : 'zombie', e.i, e.j);
   return e;
@@ -746,7 +832,7 @@ function spawnEnemy(type) {
 function endRaid() {
   const n = V.raid.n;
   V.raid.active = false; V.raid.bestN = Math.max(V.raid.bestN, n);
-  const g = 60 + 30 * n, w = 30 + 12 * n;
+  const rw = DIFF[SET.diff].reward, g = Math.round((60 + 30 * n) * rw), w = Math.round((30 + 12 * n) * rw);
   const gg = addRes('gold', g), ww = addRes('wood', w);
   for (const b of V.buildings) { if (b.state === 'built') { b.hp = b.maxHp; b.armed = true; } }
   if (V.hero && !V.hero.dead) V.hero.hp = V.hero.maxHp;
@@ -786,6 +872,8 @@ function step(dt) {
   if (V.parts.length > 500) V.parts.splice(0, V.parts.length - 500);
   for (const t of V.texts) t.t += dt;
   V.texts = V.texts.filter(t => t.t < t.life);
+  for (const a of V.arcs) a.t += dt;
+  V.arcs = V.arcs.filter(a => a.t < 0.28);
   for (const r of V.rings) r.t += dt;
   V.rings = V.rings.filter(r => r.t < 0.5);
   V.shake = Math.max(0, V.shake - dt * 25);
@@ -802,7 +890,7 @@ function layoutTrees(removed) {
 }
 function newVillage() {
   V.seed = 1 + Math.floor(Math.random() * 1e6);
-  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, selHero: false, selEnemy: null, paused: false });
+  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: {}, train: {}, heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, selHero: false, selEnemy: null, paused: false });
   V.raid = { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 };
   Terr.level = 1;
   Ground.build(V.seed); layoutTrees();
@@ -842,7 +930,7 @@ function expandMap() {
 function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      seed: V.seed, res: V.res, terr: Terr.level, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, kills: V.kills, t: Date.now(),
+      seed: V.seed, res: V.res, terr: Terr.level, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, tech: V.tech, train: V.train, kills: V.kills, t: Date.now(),
       removed: V.trees.filter(t => !t.alive).map(t => [t.i, t.j]),
       b: V.buildings.map(b => ({ type: b.type, i: b.i, j: b.j, level: b.level, state: b.state, hp: b.hp, buildT: b.buildT, buildTotal: b.buildTotal, up: b.up, prod: b.prod })),
     }));
@@ -852,7 +940,7 @@ function loadGame() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { s = null; }
   if (!s || !s.b || !s.b.some(b => b.type === 'townhall' && b.state !== 'ruin')) return false;
-  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, selHero: false, selEnemy: null, paused: false, seed: s.seed });
+  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: s.tech || {}, train: s.train || {}, heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, selHero: false, selEnemy: null, paused: false, seed: s.seed });
   V.raid = { n: s.raid || 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: s.best || 0 };
   Terr.level = clamp(s.terr || 1, 1, TERR_R.length);
   Ground.build(V.seed); layoutTrees(s.removed);

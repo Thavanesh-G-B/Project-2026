@@ -29,14 +29,20 @@ const BDEF = {
     hp: [350, 520, 760], heal: [6, 10, 16], mend: [2, 4, 7], radius: 6.2, cost: [{ gold: 220, wood: 140 }, { gold: 500, wood: 260 }, { gold: 1000, wood: 500 }], time: [12, 26, 46], max: [0, 1, 2] },
   builderhut: { cat: 'Utility', name: "Builder's Hut", w: 2, d: 2, kind: 'hut', maxLevel: 1, desc: 'Each hut gives you one more builder, so more things can be built at once.',
     hp: [300, 300, 300], cost: [{ gold: 80, wood: 120 }], time: [6], max: [1, 2, 3] },
+  tesla: { cat: 'Defense', name: 'Tesla Coil', w: 2, d: 2, kind: 'defense', air: true, ground: true, chain: [3, 4, 6], desc: 'Lightning leaps from one enemy to the next, weakening a little with every jump. Hits ground and air.',
+    hp: [340, 500, 720], dmg: [20, 32, 50], range: 5.2, cd: 1.5, cost: [{ gold: 480, wood: 160 }, { gold: 920, wood: 280 }, { gold: 1700, wood: 520 }], time: [20, 36, 60], max: [0, 1, 2] },
+  academy: { cat: 'Utility', name: 'Academy', w: 2, d: 2, kind: 'academy', maxLevel: 1, desc: 'Scholars study here. Opens the Research panel: faster mines, tougher walls, deadlier towers and a better trained hero.',
+    hp: [420, 420, 420], cost: [{ gold: 260, wood: 180 }], time: [14], max: [0, 1, 1] },
+  market: { cat: 'Economy', name: 'Trading Post', w: 2, d: 2, kind: 'market', maxLevel: 1, desc: 'Trade gold and wood at the market rate. Handy when one of them is running short.',
+    hp: [320, 320, 320], cost: [{ gold: 150, wood: 130 }], time: [8], max: [0, 1, 1] },
   lantern: { cat: 'Decor', name: 'Lantern Post', w: 1, d: 1, kind: 'decor', maxLevel: 1, desc: 'A warm light for the paths.', hp: [80, 80, 80], cost: [{ wood: 8 }], time: [1], max: [6, 10, 16] },
   garden: { cat: 'Decor', name: 'Flower Garden', w: 2, d: 2, kind: 'decor', maxLevel: 1, desc: 'Blossoming beds to brighten the village.', hp: [120, 120, 120], cost: [{ gold: 25, wood: 18 }], time: [2], max: [2, 4, 6] },
   fountain: { cat: 'Decor', name: 'Fountain', w: 2, d: 2, kind: 'decor', maxLevel: 1, desc: 'A stone fountain for the village green.', hp: [200, 200, 200], cost: [{ gold: 140, wood: 50 }], time: [3], max: [1, 1, 2] },
 };
 const SHOP_CATS = ['Economy', 'Defense', 'Utility', 'Decor'];
-const SHOP_ORDER = ['goldmine', 'lumbercamp', 'storage', 'archer', 'cannon', 'mortar', 'magetower', 'wall', 'trap', 'barracks', 'shrine', 'builderhut', 'lantern', 'garden', 'fountain'];
+const SHOP_ORDER = ['goldmine', 'lumbercamp', 'storage', 'market', 'archer', 'cannon', 'mortar', 'magetower', 'tesla', 'wall', 'trap', 'barracks', 'shrine', 'academy', 'builderhut', 'lantern', 'garden', 'fountain'];
 // map expansion: level 2..4 pushes the clouds back. Needs the given Town Hall level.
-const EXPAND = [null, { gold: 250, wood: 150, th: 1 }, { gold: 700, wood: 450, th: 2 }, { gold: 1500, wood: 1000, th: 3 }];
+const EXPAND = [null, { gold: 250, wood: 150, th: 1 }, { gold: 700, wood: 450, th: 2 }, { gold: 1500, wood: 1000, th: 3 }, { gold: 2800, wood: 1900, th: 3 }];
 
 // Enemy templates. speed in tiles/s; scale = sprite scale on the isometric map.
 const EDATA = {
@@ -58,7 +64,36 @@ const EDATA = {
     g: { idle: 'king_idle', walk: 'king_move', beam: 'king_beam', summon: 'king_summon', hurt: 'king_hurt', die: 'king_die' } },
 };
 
-const HERO_DEF = { name: 'Aldric', hp: 220, dmg: 18, speed: 2.6, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6, mana: 100, manaRegen: 3.5, strikeMana: 30, healMana: 45, healPct: 0.35, healCd: 20, armorRed: [0, 0.12, 0.22, 0.32], armorName: ['Cloth tunic', 'Iron armor', 'Gold armor', 'Crystal armor'], titles: ['Wanderer', 'Squire', 'Knight', 'Champion'] };
+const HERO_DEF = { name: 'Aldric', hp: 220, dmg: 18, speed: 2.6, range: 1.35, cd: 0.55, strikeCd: 8, strikeDmg: 3.2, strikeRadius: 2.6, mana: 100, manaRegen: 3.5, strikeMana: 30, healMana: 45, healPct: 0.35, healCd: 20, cryLevel: 3, cryMana: 40, cryCd: 24, cryDur: 8, cryDmg: 1.4, cryGuard: 1.3, cryRadius: 5.5, armorRed: [0, 0.12, 0.22, 0.32], armorName: ['Cloth tunic', 'Iron armor', 'Gold armor', 'Crystal armor'], titles: ['Wanderer', 'Squire', 'Knight', 'Champion'] };
 
 const hallLevel = () => (V.buildings.find(b => b.type === 'townhall') || { level: 1 }).level;
 const maxCount = type => BDEF[type].max[hallLevel() - 1];
+
+// Research (needs an Academy). Level n+1 of a tech needs Town Hall level ceil((n+1)/2). cost(n) is the price of the next level.
+const TECH = {
+  prospect: { name: 'Prospecting', ico: '◉', max: 5, per: '+12% gold from mines', cost: n => ({ gold: 110 + n * 120, wood: 50 + n * 50 }) },
+  forestry: { name: 'Forestry', ico: '⌾', max: 5, per: '+12% wood from camps', cost: n => ({ gold: 90 + n * 100, wood: 60 + n * 60 }) },
+  granary: { name: 'Deep Granary', ico: '▣', max: 5, per: '+12% storage space', cost: n => ({ gold: 100 + n * 110, wood: 100 + n * 90 }) },
+  masonry: { name: 'Masonry', ico: '▤', max: 5, per: '+8% building health', cost: n => ({ gold: 130 + n * 140, wood: 90 + n * 80 }) },
+  carpentry: { name: 'Carpentry', ico: '⚒', max: 4, per: '-8% build time', cost: n => ({ gold: 140 + n * 150, wood: 100 + n * 90 }) },
+  fletching: { name: 'Fletching', ico: '➶', max: 5, per: '+12% archer damage', cost: n => ({ gold: 130 + n * 140, wood: 70 + n * 60 }) },
+  gunnery: { name: 'Gunnery', ico: '●', max: 5, per: '+12% cannon, mortar and trap damage', cost: n => ({ gold: 160 + n * 170, wood: 90 + n * 70 }) },
+  arcana: { name: 'Arcana', ico: '✦', max: 5, per: '+12% mage tower and Tesla damage', cost: n => ({ gold: 170 + n * 180, wood: 80 + n * 70 }) },
+  tactics: { name: 'Drill Yard', ico: '⚑', max: 5, per: '+10% guard health and damage', cost: n => ({ gold: 120 + n * 130, wood: 80 + n * 70 }) },
+};
+const TECH_ORDER = ['prospect', 'forestry', 'granary', 'masonry', 'carpentry', 'fletching', 'gunnery', 'arcana', 'tactics'];
+// Hero training: one skill point per hero level above 1, spent here.
+const TRAIN = {
+  might: { name: 'Might', ico: '⚔', max: 5, per: '+6% damage' },
+  vigor: { name: 'Vigor', ico: '♥', max: 5, per: '+8% health' },
+  mind: { name: 'Focus', ico: '✧', max: 5, per: '+12 mana, +10% mana regen' },
+  fleet: { name: 'Fleet foot', ico: '➤', max: 5, per: '+4% move speed' },
+};
+const TRAIN_ORDER = ['might', 'vigor', 'mind', 'fleet'];
+// Raid difficulty (applies from the next raid). count scales how many raiders come, reward the gold and wood for repelling a raid.
+const DIFF = {
+  easy: { name: 'Easy', hp: 0.8, dmg: 0.8, count: 0.8, reward: 0.9 },
+  normal: { name: 'Normal', hp: 1, dmg: 1, count: 1, reward: 1 },
+  hard: { name: 'Hard', hp: 1.3, dmg: 1.25, count: 1.25, reward: 1.35 },
+  brutal: { name: 'Brutal', hp: 1.7, dmg: 1.5, count: 1.5, reward: 1.9 },
+};

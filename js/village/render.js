@@ -148,6 +148,7 @@ function barColors(f) {
 }
 function rr(x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function drawBar(x, y, w, f, o) {
+  if (SET.bars === 'off') return;
   o = o || {}; f = clamp(f, 0, 1);
   const h = o.h || 6, ent = o.ent, x0 = x - w / 2;
   let trail = f;
@@ -232,6 +233,7 @@ function drawHero(h, t) {
   else if (h.atk >= 0) { o.kind = 'attack'; o.u = clamp(h.atk / 0.39, 0, 1); }
   else if (h.chopping) { o.kind = 'chop'; o.u = (h.chop % 0.9) / 0.9; }
   else if (moving) { o.kind = 'walk'; o.ph = sph; }
+  if (h.cryT > 0) cryAura(x, y, t, 1);
   Hero.draw(ctx, o); h._flip = o._flip; h._frame = o._name;
   if (o.kind === 'attack') swordArc(x, y, Math.abs(Math.sin(yaw)) > 0.2 ? Math.sign(Math.sin(yaw)) : (h.face || 1), o.u);
   if (o.kind === 'strike') {                                 // charge: light gathers on the raised blade; slam: ground flash
@@ -244,6 +246,13 @@ function drawHero(h, t) {
   drawBar(x, y - 74, 36, h.hp / h.maxHp, { ent: h, h: 6, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
   nameTag(x, y - 80, 'Lv ' + V.heroLevel);
 }
+// Battle Cry: a warm golden pool of light under the unit while the buff lasts
+function cryAura(x, y, t, k) {
+  const p = 0.7 + 0.3 * Math.sin(t * 8 + x), r = 30 * k;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.scale(1, 0.5);
+  const gr = ctx.createRadialGradient(x, y * 2, 2, x, y * 2, r * p); gr.addColorStop(0, 'rgba(255,214,120,.55)'); gr.addColorStop(1, 'rgba(255,170,60,0)');
+  ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y * 2, r * p, 0, 6.283); ctx.fill(); ctx.restore();
+}
 function drawGuard(gd, t) {
   const x = isoX(gd.i, gd.j), y = isoY(gd.i, gd.j) + 2;
   shadowAt(x, y, 14, 5.5, 0.28);
@@ -252,6 +261,7 @@ function drawGuard(gd, t) {
   if (gd.atk >= 0) { o.kind = 'attack'; o.u = clamp(gd.atk / 0.45, 0, 1); }
   else if (walking) { o.kind = 'walk'; o.ph = sph; }
   if (gd.hurt > 0) o.flash = 'rgba(255,50,40,.4)';
+  if (gd.cryT > 0) cryAura(x, y, t, 0.7);
   Hero.draw(ctx, o);
   if (o.kind === 'attack') swordArc(x, y, o.side, o.u);
   if (gd.hp < gd.maxHp) drawBar(x, y - 70, 28, gd.hp / gd.maxHp, { ent: gd, h: 5, col: ['#8fd0ff', '#3f90e0', '#1f5aa0'] });
@@ -383,7 +393,7 @@ function render(ts) {
   // gather drawables with a depth key
   const L = [];
   const vx0 = worldX(-160), vx1 = worldX(UI.W + 160), vy0 = worldY(-260), vy1 = worldY(UI.H + 100);
-  const sway = UI.cam.zoom > 0.85, reach = Terr.r + 4;     // trees under the cloud bank are never drawn
+  const sway = SET.sway && UI.cam.zoom > 0.85, reach = Terr.r + 4;     // trees under the cloud bank are never drawn
   for (const tr of V.trees) {
     if (!tr.alive || Math.abs(tr.i - MID) > reach || Math.abs(tr.j - MID) > reach) continue;
     const x = isoX(tr.i + 0.5, tr.j + 0.5), y = isoY(tr.i + 0.5, tr.j + 0.5);
@@ -406,7 +416,20 @@ function render(ts) {
   for (const o of L) o.f();
   for (const p of V.proj) drawProj(p);
   // effects
-  for (const r of V.rings) { const f = r.t / 0.5, rr = r.r + (r.max - r.r) * f, col = r.green ? '170,255,190' : r.blue ? '150,200,255' : '255,240,200'; ctx.strokeStyle = `rgba(${col},${0.7 * (1 - f)})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(isoX(r.i, r.j), isoY(r.i, r.j), rr * 45.25, rr * 22.6, 0, 0, 6.283); ctx.stroke(); }
+  for (const r of V.rings) { const f = r.t / 0.5, rr = r.r + (r.max - r.r) * f, col = r.gold ? '255,208,112' : r.green ? '170,255,190' : r.blue ? '150,200,255' : '255,240,200'; ctx.strokeStyle = `rgba(${col},${0.7 * (1 - f)})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(isoX(r.i, r.j), isoY(r.i, r.j), rr * 45.25, rr * 22.6, 0, 0, 6.283); ctx.stroke(); }
+  for (const a of V.arcs) {                          // Tesla lightning: a jagged white-blue bolt between the coil and each enemy it jumps to
+    const k = 1 - a.t / 0.28; ctx.save(); ctx.lineJoin = 'round'; ctx.globalCompositeOperation = 'lighter';
+    for (const [w, col] of [[7, `rgba(90,150,255,${0.35 * k})`], [3.2, `rgba(190,230,255,${0.9 * k})`], [1.3, `rgba(255,255,255,${k})`]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath();
+      for (let n = 1; n < a.pts.length; n++) {
+        const p0 = a.pts[n - 1], p1 = a.pts[n], x0 = isoX(p0.i, p0.j), y0 = isoY(p0.i, p0.j) - p0.z, x1 = isoX(p1.i, p1.j), y1 = isoY(p1.i, p1.j) - p1.z;
+        ctx.moveTo(x0, y0); const seg = 6;
+        for (let q = 1; q <= seg; q++) { const f = q / seg, jit = q === seg ? 0 : (vhash(q, n + Math.floor(a.t * 40), a.seed | 0) - 0.5) * 20; ctx.lineTo(x0 + (x1 - x0) * f + jit, y0 + (y1 - y0) * f + jit * 0.5); }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   for (const f of V.slashFx) {                       // impact slash: a white crescent with sparks where a blow lands
     const k = f.t / 0.32, x = isoX(f.i, f.j), y = isoY(f.i, f.j) - 26;
     ctx.save(); ctx.translate(x, y); ctx.rotate(f.a - 0.5); ctx.globalAlpha = 1 - k;
@@ -417,7 +440,7 @@ function render(ts) {
   for (const p of V.parts) { ctx.globalAlpha = clamp(p.life / p.max, 0, 1); ctx.fillStyle = p.c; ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s); }
   ctx.globalAlpha = 1;
   ctx.font = 'bold 13px "Courier New", monospace'; ctx.textAlign = 'center';
-  for (const tx of V.texts) { const a = 1 - tx.t / tx.life; ctx.globalAlpha = a; const x = isoX(tx.i, tx.j), y = isoY(tx.i, tx.j) - tx.z - tx.t * 26; ctx.fillStyle = '#000'; ctx.fillText(tx.text, x + 1, y + 1); ctx.fillStyle = tx.color; ctx.fillText(tx.text, x, y); }
+  for (const tx of V.texts) { if (!SET.nums && tx.text[0] === '-') continue; const a = 1 - tx.t / tx.life; ctx.globalAlpha = a; const x = isoX(tx.i, tx.j), y = isoY(tx.i, tx.j) - tx.z - tx.t * 26; ctx.fillStyle = '#000'; ctx.fillText(tx.text, x + 1, y + 1); ctx.fillStyle = tx.color; ctx.fillText(tx.text, x, y); }
   ctx.globalAlpha = 1;
   if (lifeOn) { Life.drawAmbient(ctx, view0, t); Life.drawLight(ctx, view0, t); }
   if (UI.place) drawGhost();

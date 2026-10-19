@@ -28,9 +28,10 @@ const out = process.argv[2] || '/tmp';
   check('all actions pick a frame', Object.values(rig.kinds).every(([n, h]) => n && h > 20), JSON.stringify(Object.fromEntries(Object.entries(rig.kinds).map(([k, v]) => [k, v[0]]))));
   check('armour and villager outfits load', Object.values(rig.variants).every(Boolean), JSON.stringify(rig.variants));
 
+  await page.evaluate(() => { window.plant = (i, j) => { const t = { i, j, v: 0, s: 1, alive: true, ox: 0, oj: 0, ph: 0 }; V.trees.push(t); V.occ[j * GN + i] = -1; return t; }; });
   // 2. chop: three axe hits, shake, fall, wood
   const chop = await page.evaluate(() => {
-    const t = V.trees.filter(t => t.alive && Math.abs(t.i - MID) < 9 && Math.abs(t.j - MID) < 9 && Terr.has(t.i, t.j) && occAt(t.i, t.j + 2) === 0)[0];
+    const t = plant(MID + 5, MID + 5);      // the forest starts well outside the starting territory now, so plant a tree to chop
     V.hero.i = t.i + 0.5; V.hero.j = t.j + 2.2; V.hero.path = []; const wood0 = V.res.wood; orderChop(t);
     const seen = { shake: false, chopping: false, fall: false, hits: 0 };
     for (let k = 0; k < 40 * 6; k++) { step(1 / 40); if (t.shake > 0) seen.shake = true; if (V.hero.chopping) seen.chopping = true; if (t.fall) seen.fall = true; seen.hits = Math.max(seen.hits, t.hits || 0); }
@@ -116,7 +117,7 @@ const out = process.argv[2] || '/tmp';
   const pick = await page.evaluate(() => {
     V.res.gold = 9999; V.res.wood = 9999; for (const e of V.enemies) e.dead = true; V.enemies = [];
     UI.follow = false; document.getElementById('bFollow').classList.remove('active'); const a = buildNew('storage', MID + 5, MID - 1), c = buildNew('cannon', MID + 8, MID - 1); for (let k = 0; k < 40 * 25; k++) step(1 / 40);
-    UI.cam.zoom = 1; centerOn(MID + 7, MID); const r = document.getElementById('v').getBoundingClientRect(), out = {};
+    UI.cam.zoom = 1; centerOn(MID + 7, MID + 4); const r = document.getElementById('v').getBoundingClientRect(), out = {};
     for (const t of ['storage', 'cannon']) { const b = V.buildings.find(q => q.type === t && q.i >= MID + 5); if (!b) { out[t] = 'missing'; continue; } const x = isoX(b.i + b.w / 2, b.j + b.d / 2), y = isoY(b.i + b.w / 2, b.j + b.d / 2) - 40; out[t] = [r.left + (x - UI.cam.x) * UI.cam.zoom + UI.W / 2, r.top + (y - UI.cam.y) * UI.cam.zoom + UI.H / 2]; }
     return { a, c, out };
   });
@@ -145,7 +146,7 @@ const out = process.argv[2] || '/tmp';
   const chopSides = await page.evaluate(async () => {
     V.selHero = false; V.selected = null; for (const e of V.enemies) e.dead = true; V.enemies = []; V.hero.dead = false; UI.follow = true; UI.cam.zoom = 1.5; V.paused = false;
     const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], free = t => N8.filter(([a, b]) => occAt(t.i + a, t.j + b) === 0 && Terr.has(t.i + a, t.j + b)).length;
-    const t = V.trees.filter(t => t.alive && !t.felled && Math.abs(t.i - MID) < 11 && Math.abs(t.j - MID) < 11 && Terr.has(t.i, t.j)).sort((a, b) => free(b) - free(a))[0], res = [];
+    const t = plant(MID - 6, MID + 5), res = [];
     for (const [a, b] of N8.filter(([a, b]) => occAt(t.i + a, t.j + b) === 0 && Terr.has(t.i + a, t.j + b))) {
       t.hits = 0; t.felled = false; t.alive = true; t.fall = null; V.occ[t.j * GN + t.i] = -1;
       const h = V.hero; h.i = t.i + 0.5 + a; h.j = t.j + 0.5 + b; h.path = []; h.order = null; h.chopping = false; orderChop(t);
