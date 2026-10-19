@@ -23,8 +23,10 @@ const out = process.argv[2] || '/tmp';
     for (const v of ['hero', 'a1', 'a2', 'a3', 'v0', 'v1', 'v2', 'v3']) res.variants[v] = !!Hero.img[v] && !!one({ yaw: 0, kind: 'idle', variant: v })[0];
     return res;
   });
-  check('hero drawn from all 8 sides (NW mirrors NE)', rig.dirs.every(([n, h]) => n && h > 70) && rig.dirs[5][0].startsWith('w_NE') && rig.dirs[5][2], JSON.stringify(rig.dirs.map(d => d[0])));
-  check('right-hand diagonals are mirrors of the left ones, so head and body point the way he walks', rig.dirs[1][0].startsWith('w_SW') && rig.dirs[1][2] === true && rig.dirs[7][0].startsWith('w_SW') && rig.dirs[7][2] === false && rig.dirs[5][2] === true && rig.dirs[3][2] === false, JSON.stringify(rig.dirs.map(d => d[0] + (d[2] ? '*' : ''))));
+  // the knight has a real picture for every one of the eight facings, so nothing is mirrored
+  const DIRN = ['S', 'SE', 'E', 'NE', 'N', 'NW', 'W', 'SW'];
+  check('hero (knight) drawn from all 8 sides, each with its own picture', rig.dirs.every(([n, h, f], k) => n && h > 70 && !f && n.split('_')[1] === DIRN[k]), JSON.stringify(rig.dirs.map(d => d[0])));
+  check('the walk is the Run animation; villagers still use the old pixel-art person', rig.dirs.every(d => d[0].startsWith('Run_')), '');
   check('all actions pick a frame', Object.values(rig.kinds).every(([n, h]) => n && h > 20), JSON.stringify(Object.fromEntries(Object.entries(rig.kinds).map(([k, v]) => [k, v[0]]))));
   check('armour and villager outfits load', Object.values(rig.variants).every(Boolean), JSON.stringify(rig.variants));
 
@@ -99,7 +101,7 @@ const out = process.argv[2] || '/tmp';
     return out;
   });
   check('hero abilities: heal, specific target, stance, stop, mana-cost strike', abil.heal && abil.target && abil.stance === 'defensive' && abil.stopped && abil.manaSpent, JSON.stringify(abil));
-  check('strike plays sword frames (no spinning through directions)', abil.frames.every(n => /^atk/.test(n)), JSON.stringify(abil.frames));
+  check('strike plays one sword animation (no spinning through directions)', abil.frames.every(n => /^Special1_SE_/.test(n)) && abil.frames.length >= 10, JSON.stringify(abil.frames));
   check('armour reduces damage taken', abil.armourTaken < 90 && abil.armourTaken > 70, String(abil.armourTaken));
 
   // 8. reference-sheet buildings are used and the ground is dressed with boulders / berry bushes
@@ -155,7 +157,8 @@ const out = process.argv[2] || '/tmp';
     }
     return res;
   });
-  check('chop: hero stands beside the tree, level with it, axe towards it', chopSides.length >= 3 && chopSides.every(r => r && r.level && r.flipped === !r.treeRight), JSON.stringify(chopSides));
+  const faces = f => (f || '').split('_')[1] || '';
+  check('chop: hero stands beside the tree, level with it, facing it with the chopping swing', chopSides.length >= 3 && chopSides.every(r => r && r.level && /^Pummel_/.test(r.frame) && (r.treeRight ? /E/.test(faces(r.frame)) : /W/.test(faces(r.frame)))), JSON.stringify(chopSides));
 
   // 12. walking by click: straight legs of travel, a steady facing (no wobble between neighbouring directions), never through buildings
   const route = await page.evaluate(async () => {

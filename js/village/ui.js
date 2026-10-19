@@ -155,8 +155,8 @@ function selectEnemy(e) { V.selected = null; V.selHero = false; V.selEnemy = e; 
 let infoHtml = '';
 const barH = (cls, f, trail) => `<span class="hbar ${cls}${f < 0.3 && f > 0 && cls === 'hero' ? ' low' : ''}"><i class="fill" style="transform:scaleX(${clamp(f, 0, 1).toFixed(3)});transition:none"></i></span>`;
 function portraitStyle() {
-  const A = window.HERO_ATLAS, t = heroTierNow(), F = A.frames.w_S_0, k = 1.15, w = F[2] * k, h2 = F[3] * k;
-  return `background-image:url(assets/sprites/hero_${t ? 'a' + t : 'hero'}.png);background-size:${A.w * k}px ${A.h * k}px;background-position:${-F[0] * k + (62 - w) / 2}px ${-F[1] * k + (84 - h2) / 2 - 2}px`;
+  const t = heroTierNow();
+  return Hero.portraitCss(t ? 'a' + t : 'hero');
 }
 function heroState(h) {
   if (h.dead) return `Fallen. Returns in ${Math.ceil(h.respawn)}s`;
