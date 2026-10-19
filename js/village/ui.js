@@ -262,7 +262,7 @@ function refreshInfo() {
     V.selected = null;
     el.innerHTML = V.raid.active
       ? `<p><b>Raid ${V.raid.n} in progress.</b> Right-click an enemy to attack it with your hero, or press <b>Hero strike</b> for a shockwave. Defenses fire on their own.</p>`
-      : `<p>Welcome to your village. Clouds hide the land you have not claimed yet: use <b>Expand map</b> to push them back. Tap a mine or lumber camp to collect, build from the <b>quick bar</b> or the <b>Village shop</b>, and right-click to command your hero. Start a raid when you are ready.</p>`;
+      : `<p>Welcome to your village. Clouds hide the land you have not claimed yet: use <b>Expand map</b> to push them back. Tap a mine or lumber camp to collect, build from the <b>quick bar</b> or the <b>Village shop</b>, and right-click to command your hero. Treasure chests lie out in the wild: walk your hero up to one to open it. Start a raid when you are ready.</p>`;
     return;
   }
   const d = BDEF[b.type];
@@ -402,6 +402,7 @@ function drawWorldMap() {
     g.beginPath(); g.moveTo(...q[0]); for (const p of q.slice(1)) g.lineTo(...p); g.closePath(); g.moveTo(...h[0]); for (const p of h.slice(1)) g.lineTo(...p); g.closePath(); g.fill('evenodd'); }
   g.fillStyle = '#3d6038'; for (const t of V.trees) if (Terr.has(t.i, t.j)) if (t.alive) { const p = P2(t.i + 0.5, t.j + 0.5); g.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); }
   for (const b of V.buildings) { const p = P2(b.i + b.w / 2, b.j + b.d / 2); g.fillStyle = b.state === 'ruin' ? '#555' : b.type === 'townhall' ? '#e8c24a' : BDEF[b.type].kind === 'defense' ? '#d86a5a' : b.type === 'wall' ? '#aaa' : '#8ab8e0'; const s = b.type === 'wall' ? 2 : 4 + b.w; g.fillRect(p[0] - s / 2, p[1] - s / 2, s, s); }
+  for (const p of Life.props) if (p.type === 'chest' && !p.open && Terr.has(p.i, p.j)) { const q = P2(p.i + 0.5, p.j + 0.5); g.fillStyle = '#ffd24a'; g.fillRect(q[0] - 2, q[1] - 2, 4, 4); g.strokeStyle = '#6a4a10'; g.lineWidth = 1; g.strokeRect(q[0] - 2, q[1] - 2, 4, 4); }
   for (const e of V.enemies) { if (!Terr.has(e.i, e.j)) continue; const p = P2(e.i, e.j); g.fillStyle = '#ff4a3a'; g.fillRect(p[0] - 2, p[1] - 2, e.boss ? 6 : 4, e.boss ? 6 : 4); }
   if (V.hero) { const p = P2(V.hero.i, V.hero.j); g.fillStyle = '#fff'; g.beginPath(); g.arc(p[0], p[1], 4, 0, 6.283); g.fill(); g.strokeStyle = '#3a8ae0'; g.lineWidth = 2; g.stroke(); }
   const vw = UI.W / UI.cam.zoom * sc, vh = UI.H / UI.cam.zoom * sc;

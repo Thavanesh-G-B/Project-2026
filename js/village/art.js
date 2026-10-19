@@ -108,7 +108,7 @@ const BSPR = {
   lumbercamp: { lv: [['lumber', 100], ['lumber_2', 106], ['lumber_3', 112]], lift: 0.1 },
   storage:    { lv: [['farm', 92], ['farm_2', 96], ['farm_3', 100]], lift: 0.1 },
   builderhut: { lv: [['house_b', 105]], lift: 0.12 },
-  tesla:      { lv: [['tesla', 150]], lift: 0.12, glow: [0.5, 0.06, [130, 210, 255]] },
+  tesla:      { lv: [['tesla', 132]], lift: 0.12, glow: [0.5, 0.06, [130, 210, 255]] },
   academy:    { lv: [['house_a', 124]], lift: 0.12 },
   market:     { lv: [['h_thatch', 104]], lift: 0.1 },
   shrine:     { lv: [['mage_spiral', 150], ['mage_spiral_2', 157], ['mage_spiral_3', 165]], lift: 0.14, glow: [[0.5, 0.04, [130, 220, 255]], [0.5, 0.04, [130, 255, 160]], [0.5, 0.04, [255, 220, 120]]] },

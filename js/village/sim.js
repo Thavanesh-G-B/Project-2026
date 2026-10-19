@@ -16,7 +16,7 @@ const V = {
   seed: 1, res: { gold: 300, wood: 200 }, buildings: [], trees: [], occ: new Int16Array(GN * GN),
   uidn: 0, selHero: false, selEnemy: null, hero: null, guards: [], villagers: [], input: { x: 0, y: 0 }, hitstop: 0, slashFx: [], enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [],
   raid: { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 },
-  heroLevel: 1, heroXp: 0, tech: {}, train: {}, nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
+  heroLevel: 1, heroXp: 0, tech: {}, train: {}, looted: [], nextId: 1, time: 0, state: 'play', paused: false, kills: 0, selected: null, shake: 0,
   cb: { toast() { }, changed() { }, banner() { }, expanded() { } },   // UI hooks
 };
 const tileOf = (v) => Math.floor(v);
@@ -890,7 +890,7 @@ function layoutTrees(removed) {
 }
 function newVillage() {
   V.seed = 1 + Math.floor(Math.random() * 1e6);
-  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: {}, train: {}, heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, selHero: false, selEnemy: null, paused: false });
+  Object.assign(V, { res: { gold: 300, wood: 200 }, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: {}, train: {}, looted: [], heroLevel: 1, heroXp: 0, nextId: 1, time: 0, state: 'play', kills: 0, selected: null, selHero: false, selEnemy: null, paused: false });
   V.raid = { n: 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: 0 };
   Terr.level = 1;
   Ground.build(V.seed); layoutTrees();
@@ -930,7 +930,7 @@ function expandMap() {
 function saveGame() {
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify({
-      seed: V.seed, res: V.res, terr: Terr.level, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, tech: V.tech, train: V.train, kills: V.kills, t: Date.now(),
+      seed: V.seed, res: V.res, terr: Terr.level, raid: V.raid.n, best: V.raid.bestN, heroLevel: V.heroLevel, heroXp: V.heroXp, tech: V.tech, train: V.train, looted: V.looted, kills: V.kills, t: Date.now(),
       removed: V.trees.filter(t => !t.alive).map(t => [t.i, t.j]),
       b: V.buildings.map(b => ({ type: b.type, i: b.i, j: b.j, level: b.level, state: b.state, hp: b.hp, buildT: b.buildT, buildTotal: b.buildTotal, up: b.up, prod: b.prod })),
     }));
@@ -940,7 +940,7 @@ function loadGame() {
   let s;
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { s = null; }
   if (!s || !s.b || !s.b.some(b => b.type === 'townhall' && b.state !== 'ruin')) return false;
-  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: s.tech || {}, train: s.train || {}, heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, selHero: false, selEnemy: null, paused: false, seed: s.seed });
+  Object.assign(V, { res: s.res, buildings: [], hero: null, guards: [], villagers: [], slashFx: [], hitstop: 0, enemies: [], proj: [], parts: [], texts: [], rings: [], arcs: [], tech: s.tech || {}, train: s.train || {}, looted: s.looted || [], heroLevel: s.heroLevel || 1, heroXp: s.heroXp || 0, nextId: 1, time: 0, state: 'play', kills: s.kills || 0, selected: null, selHero: false, selEnemy: null, paused: false, seed: s.seed });
   V.raid = { n: s.raid || 1, active: false, queue: [], spawnT: 0, lanes: [], killed: 0, bestN: s.best || 0 };
   Terr.level = clamp(s.terr || 1, 1, TERR_R.length);
   Ground.build(V.seed); layoutTrees(s.removed);

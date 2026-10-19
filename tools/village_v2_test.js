@@ -104,6 +104,13 @@ const out = process.argv[2] || '/tmp';
   });
   console.log('expand', JSON.stringify(ex));
   assert(ex.n === 4 && ex.r >= 42, 'all four expansions open the whole island');
+  const ch = await ev(() => {
+    const chests = Life.props.filter(p => p.type === 'chest'); V.res.gold = 100; const p = chests[0]; V.hero.dead = false; V.hero.i = p.i + 0.5; V.hero.j = p.j + 0.5; step(0.05);
+    const first = V.res.gold; V.hero.i = p.i + 0.6; step(0.05);
+    return { n: chests.length, opened: p.open, gold: first, again: V.res.gold, looted: V.looted.length };
+  });
+  console.log('chests', JSON.stringify(ch));
+  assert(ch.n >= 8 && ch.opened && ch.gold > 150 && ch.again === ch.gold && ch.looted === 1, 'treasure chests open once');
   const raid = await ev(() => {
     V.res.gold = 5000; V.res.wood = 5000; for (const [t, di, dj] of [['archer', 3, 4], ['cannon', -4, 4], ['tesla', 5, -4]]) { const b = addBuilding(t, MID + di, MID + dj); }
     startRaid(); let steps = 0, reached = 0; for (; steps < 40 * 90 && V.raid.active; steps++) step(1 / 40); return { steps, active: V.raid.active, kills: V.kills, state: V.state };

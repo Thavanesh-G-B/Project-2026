@@ -6,7 +6,7 @@ Two games share this project: a side-scrolling **survival platformer** (`index.h
 
 An isometric island village in the spirit of Clash of Clans. Gather resources, build and upgrade, then defend against escalating undead raids with your hero, towers, walls, traps and trained guards.
 
-- **Clouds and expansion**: the island is 61 x 61 tiles, but you start with a 25 x 25 territory. Everything else (and the void around the island) is hidden by clouds, and you cannot build on or walk into it. *Expand map* (`E`) pays gold and wood, needs a higher Town Hall, and makes the clouds part to reveal the next ring of land (25 -> 35 -> 47 -> 61). Raids start just inside the cloud bank, so enemies emerge from the clouds.
+- **Clouds and expansion**: the island is 87 x 87 tiles, but you start with a 25 x 25 territory. Everything else (and the void around the island) is hidden by clouds, and you cannot build on or walk into it. *Expand map* (`E`) pays gold and wood, needs a higher Town Hall, and makes the clouds part to reveal the next ring of land in five stages (25 -> 37 -> 51 -> 69 -> 87). Raids start just inside the cloud bank (at most 30 tiles out), so enemies emerge from the clouds. The forest stands in separate groves with open meadow between them rather than wall to wall, and out in the wild lie **treasure chests**: walk your hero up to one for gold, wood and XP (the further out, the richer; they show as gold dots on the world map).
 - **Collectors**: Gold Mines and Lumber Camps fill up over time (even while you are away, up to 30 minutes at half rate). Tap the floating coin or log bubble to collect before they are full.
 - **Build**: use the **quick-build bar** on the map (one click per building, with costs on hover) or the **Village shop** (`3`), which has Economy / Defense / Utility / Decor tabs. Then click an empty tile. Builders work in parallel on construction and upgrades; walls can be dragged out in a line. Limits and levels depend on the Town Hall level.
   - Economy: Gold Mine, Lumber Camp, Storage Barn
@@ -23,7 +23,12 @@ An isometric island village in the spirit of Clash of Clans. Gather resources, b
 - **Look**: per-pixel meadow, forest floor and dirt lanes with ruts and shoulders, tufts, flowers and stones; layered cliffs; five broadleaf species (oak, lime, olive, autumn, birch) and spruce with lit leaf clusters, barked trunks and soft shadows.
 - Camera: drag to pan (limited to your territory), wheel to zoom, *Follow hero*, *Village* (recentre), *World map* (jump anywhere). Progress is saved in the browser automatically.
 
-Keys: `W A S D` / arrows walk the hero, `J` attack nearest, `H` Second Wind, `X` stop, `C` select hero, `1` move/inspect, `2` gather tree, `3` shop, `E` expand map, `R` start raid, `Space` strike, `F` follow, `M` map, `P` pause, `Esc` cancel.
+- **Research and training**: build an **Academy** (Town Hall 2) to open *Research* (`T`): nine upgrades of up to five levels each (Prospecting, Forestry, Deep Granary, Masonry, Carpentry, Fletching, Gunnery, Arcana, Drill Yard) for gold and wood, gated by Town Hall level. Every hero level above 1 earns a skill point for *Hero training* (Might, Vigor, Focus, Fleet foot). From hero level 3, **Battle Cry** (`B`) boosts the hero's damage and the nearby guards for 8 s.
+- **More buildings**: the **Tesla Coil** (Town Hall 2) chains lightning through several enemies, ground or air; the **Trading Post** (Town Hall 2) swaps wood for gold and back at a lossy rate.
+- **Options** (`O`): raid difficulty (Easy to Brutal, scaling raider health, damage, numbers and rewards), game speed 1x to 3x, auto-collect from mines and camps, damage numbers, health bars and swaying trees. Saved on the device.
+- **HUD**: the top-right panel shows the hero portrait and level, Hall / Hero / Mana / XP bars (plus a raid-progress bar during raids), clickable ability buttons with cooldown sweeps, damage, armour, kills, unspent skill points and your income per minute.
+
+Keys: `W A S D` / arrows walk the hero, `B` Battle Cry, `T` research, `O` options, `J` attack nearest, `H` Second Wind, `X` stop, `C` select hero, `1` move/inspect, `2` gather tree, `3` shop, `E` expand map, `R` start raid, `Space` strike, `F` follow, `M` map, `P` pause, `Esc` cancel.
 
 ---
 
@@ -78,7 +83,7 @@ Surface undead burn in sunlight at dawn, so a shelter of blocks will get you thr
 index.html            page shell
 js/assets.js          sprite atlas access
 js/sfx.js             shared audio
-js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), clouds, hero (character sprites), life (shadows, props, villagers, light), sim, render, ui
+js/village/*.js       village mode: core (iso, terrain, trees), data, art (building sprites), clouds, hero (character sprites), life (shadows, props, villagers, light, chests), sim, render, ui, ui2 (research, options, market, HUD)
 village.html          village mode page
 js/world.js           tiles + world generation
 js/tiles.js           block textures and edge lighting
@@ -106,6 +111,7 @@ NODE_PATH=$(npm root -g) node tools/village_test.js <screenshot-dir>   # village
 python3 tools/check_sprites.py                                          # no pale fringe around any cut-out sprite
 NODE_PATH=$(npm root -g) node tools/sfx_meter.js                       # plays every sound voice and prints its output level
 NODE_PATH=$(npm root -g) node tools/village_life_test.js <screenshot-dir>  # village: character sprites, hero panel and abilities, chop and fall, villagers, dusk, every sound voice
+NODE_PATH=$(npm root -g) node tools/village_v2_test.js <screenshot-dir>   # village: big map, sparse forest, research, hero training, Battle Cry, Tesla, market, options, chests
 NODE_PATH=$(npm root -g) node tools/village_soak.js                    # a bot plays 12 raids including both bosses
 ```
 

@@ -127,6 +127,7 @@
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #lost .sheet { text-align: center; max-width: 520px; } #lost h2 { font: 700 30px var(--serif); letter-spacing: 0; text-transform: none; color: #f0b8a8; margin-bottom: 8px; }
   #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: var(--bg); color: #f88; font: 15px var(--mono); padding: 24px; text-align: center; z-index: 50; }
+  @media (max-width: 760px) { .hudabil, .hudinc, .hudstats, .badge { display: none; } .chip.hud { min-width: 170px !important; } .tech { flex-wrap: wrap; } }
   @media (max-width: 760px) { .top { flex-wrap: wrap; padding: 8px 12px; } main { padding: 8px; } .info { height: 120px; } .res { display: none; } }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">

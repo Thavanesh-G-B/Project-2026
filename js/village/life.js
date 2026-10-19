@@ -73,6 +73,12 @@ const Life = {
       const type = h < 0.006 + forest * 0.008 ? 'boulder' : h < 0.02 + forest * 0.014 ? 'berry' : h < 0.026 + forest * 0.012 ? 'stump' : null;
       if (type && !taken.has(i + ',' + j)) place(type, i, j, { wild: true });
     }
+    // treasure chests lie out in the wild, richer the further they are from the hall; the hero opens one by walking up to it
+    for (let k = 0, n = 0; k < 600 && n < 20; k++) {
+      const i = 3 + Math.floor(vhash(k, 1, seed + 91) * (GN - 6)), j = 3 + Math.floor(vhash(k, 2, seed + 91) * (GN - 6)), d = Math.max(Math.abs(i - MID), Math.abs(j - MID));
+      if (d < 11 || isRoad(i, j) || occAt(i, j) !== 0 || taken.has(i + ',' + j)) continue;
+      if (place('chest', i, j, { wild: true, d, open: false })) n++;
+    }
     this.props = list.sort((a, b) => (a.i + a.j) - (b.i + b.j));
   },
   // props vanish when a building is placed on top of them
@@ -115,6 +121,24 @@ const Life = {
         sh(14, 5.5, 0.22); const cols = [['#5f8f46', '#3f6c32'], ['#6aa04c', '#46763a'], ['#7a9c44', '#52702e']][p.v];
         for (const [dx, dy, r] of [[-7, -5, 8], [6, -6, 9], [0, -11, 8.5], [-1, -3, 9]]) { const g = ctx.createRadialGradient(x + dx - 2, y + dy - 3, 1, x + dx, y + dy, r); g.addColorStop(0, '#9cc868'); g.addColorStop(0.5, cols[0]); g.addColorStop(1, cols[1]); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + dx, y + dy, r, 0, 6.283); ctx.fill(); }
         if (p.v === 1) { ctx.fillStyle = '#e45a5a'; for (const [dx, dy] of [[-6, -8], [4, -5], [1, -13]]) { ctx.beginPath(); ctx.arc(x + dx, y + dy, 1.6, 0, 6.283); ctx.fill(); } }
+        break; }
+      case 'chest': {
+        sh(15, 6, 0.3); const w = 12, h = 9, by = y - 2, open = p.open, pulse = 0.5 + 0.5 * Math.sin(t * 3 + p.ph);
+        if (!open) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const gr = ctx.createRadialGradient(x, by - 8, 1, x, by - 8, 26); gr.addColorStop(0, `rgba(255,214,110,${0.3 + 0.25 * pulse})`); gr.addColorStop(1, 'rgba(255,214,110,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, by - 8, 26, 0, 6.283); ctx.fill(); ctx.restore(); }
+        ctx.lineWidth = 1.2; ctx.strokeStyle = OL;
+        if (open) {                                           // the lid swung back, a glint of gold inside
+          ctx.fillStyle = '#6e4624'; ctx.beginPath(); ctx.moveTo(x - w + 1, by - h); ctx.lineTo(x - w + 3, by - h - 11); ctx.lineTo(x + w - 3, by - h - 11); ctx.lineTo(x + w - 1, by - h); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+        const g = ctx.createLinearGradient(x - w, 0, x + w, 0); g.addColorStop(0, '#a8703a'); g.addColorStop(0.5, '#c58a4a'); g.addColorStop(1, '#6e4624');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x - w, by - h, w * 2, h, 2); ctx.fill(); ctx.stroke();
+        if (open) { ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.ellipse(x, by - h + 0.5, w - 2, 2.6, 0, 0, 6.283); ctx.fill(); ctx.fillStyle = '#fff3b0'; ctx.fillRect(x - 4, by - h - 1, 2, 1.5); ctx.fillRect(x + 2, by - h, 2, 1.5); }
+        else {
+          ctx.fillStyle = '#b87c40'; ctx.beginPath(); ctx.moveTo(x - w, by - h); ctx.quadraticCurveTo(x, by - h - 11, x + w, by - h); ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,230,170,.35)'; ctx.beginPath(); ctx.moveTo(x - w + 3, by - h - 1); ctx.quadraticCurveTo(x - 3, by - h - 8, x + 2, by - h - 6); ctx.lineTo(x + 2, by - h - 1); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#e8c24a'; ctx.fillRect(x - 1.5, by - h - 2, 3, 4.5);
+        }
+        ctx.fillStyle = '#e0b440'; ctx.fillRect(x - w + 3, by - h, 3, h); ctx.fillRect(x + w - 6, by - h, 3, h);
+        if (!open && pulse > 0.85) { ctx.fillStyle = '#fff'; const sx = x + 9, sy = by - h - 8; ctx.fillRect(sx - 0.7, sy - 3, 1.4, 6); ctx.fillRect(sx - 3, sy - 0.7, 6, 1.4); }
         break; }
       case 'sign': {
         sh(8, 3.5, 0.24);
@@ -193,8 +217,25 @@ const Life = {
 
   // ---------------------------------------------------------------- villagers
   homeDoor() { const h = this.hall; return { i: h.i + h.w / 2, j: h.j + h.d + 0.55 }; },
+  // the hero opens a chest by walking up to it
+  updateChests(dt) {
+    const h = V.hero;
+    for (const p of this.props) {
+      if (p.type !== 'chest') continue;
+      const key = p.i + ',' + p.j; p.open = V.looted.includes(key);
+      if (p.open || !h || h.dead || !Terr.has(p.i, p.j) || Math.hypot(h.i - p.i - 0.5, h.j - p.j - 0.5) > 1.3) continue;
+      V.looted.push(key); p.open = true;
+      const k = 0.8 + Math.random() * 0.4, gold = Math.round((70 + p.d * 9) * k), wood = Math.round((40 + p.d * 5) * k), xp = 3 + Math.round(p.d / 4);
+      const g = addRes('gold', gold), w = addRes('wood', wood); gainXp(xp);
+      Sfx.play('coin'); Sfx.play('power');
+      burst(p.i + 0.5, p.j + 0.5, 22, ['#ffe9a0', '#ffd24a', '#fff'], 130, 0.8, 50);
+      floatText(p.i + 0.5, p.j + 0.5, 60, `+${g} gold`, '#ffd966'); floatText(p.i + 0.5, p.j + 0.9, 40, `+${w} wood`, '#c8a070');
+      toast(`Treasure! +${gold} gold, +${wood} wood, +${xp} XP`); V.cb.changed();
+    }
+  },
   update(dt, t) {
     if (!this.sync()) return;
+    this.updateChests(dt);
     // the light follows the raid
     const target = V.raid.active ? 1 : 0; this.dusk += (target - this.dusk) * Math.min(1, dt * 0.7);
     this.updateVillagers(dt);
